@@ -1235,11 +1235,18 @@ std::string getUpgradeDescription(TowerType type, const std::string& upgradeType
 
 // Game constants are already defined earlier in the file
 
+//Tower textures
+//gl2d::Texture appleTowerTexture;
+gl2d::Texture carrotTowerTexture;
+//gl2d::Texture potatoTowerTexture;
+//gl2d::Texture pineappleTowerTexture;
+
 // Global textures
 gl2d::Texture appleTexture;
 gl2d::Texture carrotTexture;
 gl2d::Texture potatoTexture;
 gl2d::Texture pineappleTexture;
+
 // Enemy textures
 gl2d::Texture zombieTexture;
 gl2d::Texture skeletonTexture;
@@ -1397,6 +1404,13 @@ int main()
     if (carrotTexture.id == 0) {
         carrotPath = "../resources/carrot.png";
         carrotTexture.loadFromFile(carrotPath.c_str());
+    }
+
+    std::string carrotTowerPath = "resources/carrotTower.png";
+    carrotTowerTexture.loadFromFile(carrotTowerPath.c_str());
+    if (carrotTowerTexture.id == 0) {
+        carrotTowerPath = "../resources/carrotTower.png";
+        carrotTowerTexture.loadFromFile(carrotTowerPath.c_str());
     }
     
     std::string potatoPath = "resources/potato.png";
@@ -2089,7 +2103,7 @@ int main()
                     {buttonColor.r, buttonColor.g, buttonColor.b, buttonColor.a}
                 );
                 
-                // Draw tower preview with its specific color
+                // Draw tower preview with its specific color or texture
                 float towerSize = 32.0f;
                 float towerX = button.rect.x + button.rect.w/2 - towerSize/2;
                 float towerY = button.rect.y + 10;
@@ -2102,10 +2116,17 @@ int main()
                     previewColor.b *= 0.7f;
                 }
                 
-                renderer.renderRectangle(
-                    {towerX, towerY, towerSize, towerSize},
-                    {previewColor.r, previewColor.g, previewColor.b, previewColor.a}
-                );
+                if (button.type == TowerType::CARROT && carrotTowerTexture.id != 0) {
+                    renderer.renderRectangle(
+                        {towerX, towerY, towerSize, towerSize},
+                        carrotTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f}
+                    );
+                } else {
+                    renderer.renderRectangle(
+                        {towerX, towerY, towerSize, towerSize},
+                        {previewColor.r, previewColor.g, previewColor.b, previewColor.a}
+                    );
+                }
                 
                 // Draw cost indicator
                 int cost = getTowerCost(button.type);
@@ -2341,39 +2362,33 @@ int main()
         }
 
         // Draw towers
-        for (const auto& tower : towers) {
-            Color towerColor = getTowerColor(tower.type);
-            
-            if (tower.type == TowerType::BANANA_PEEL) {
-                // Draw banana peel as a curved shape
-                float peelSize = TOWER_SIZE * 0.8f;
-                
-                // Draw main yellow peel shape
-                renderer.renderRectangle(
-                    {tower.pos.x - peelSize/2, tower.pos.y - peelSize/4, peelSize, peelSize/2},
-                    {towerColor.r, towerColor.g, towerColor.b, towerColor.a}
-                );
-                
-                // Draw darker banana peel segments
-                Color darkerYellow(towerColor.r * 0.8f, towerColor.g * 0.8f, towerColor.b * 0.4f, towerColor.a);
-                renderer.renderRectangle(
-                    {tower.pos.x - peelSize/3, tower.pos.y - peelSize/6, peelSize/6, peelSize/3},
-                    {darkerYellow.r, darkerYellow.g, darkerYellow.b, darkerYellow.a}
-                );
-                renderer.renderRectangle(
-                    {tower.pos.x, tower.pos.y - peelSize/8, peelSize/6, peelSize/3},
-                    {darkerYellow.r, darkerYellow.g, darkerYellow.b, darkerYellow.a}
-                );
-            } else if (tower.type == TowerType::CACTUS) {
-                renderCactus(renderer, tower);
-            } else {
-                // Regular tower shape
-                renderer.renderRectangle(
-                    {tower.pos.x - TOWER_SIZE/2, tower.pos.y - TOWER_SIZE/2, TOWER_SIZE, TOWER_SIZE},
-                    {towerColor.r, towerColor.g, towerColor.b, towerColor.a}
-                );
-            }
+for (const auto& tower : towers) {
+    Color towerColor = getTowerColor(tower.type);
+
+    if (tower.type == TowerType::BANANA_PEEL) {
+        // ... banana peel drawing code ...
+    } else if (tower.type == TowerType::CACTUS) {
+        renderCactus(renderer, tower);
+    } else if (tower.type == TowerType::CARROT) {
+        if (carrotTowerTexture.id != 0) {
+            renderer.renderRectangle(
+                {tower.pos.x - TOWER_SIZE/2, tower.pos.y - TOWER_SIZE/2, TOWER_SIZE, TOWER_SIZE},
+                carrotTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f}
+            );
+        } else {
+            renderer.renderRectangle(
+                {tower.pos.x - TOWER_SIZE/2, tower.pos.y - TOWER_SIZE/2, TOWER_SIZE, TOWER_SIZE},
+                {towerColor.r, towerColor.g, towerColor.b, towerColor.a}
+            );
         }
+    } else {
+        // Other towers (apple, potato, pineapple, etc.) fallback to color for now
+        renderer.renderRectangle(
+            {tower.pos.x - TOWER_SIZE/2, tower.pos.y - TOWER_SIZE/2, TOWER_SIZE, TOWER_SIZE},
+            {towerColor.r, towerColor.g, towerColor.b, towerColor.a}
+        );
+    }
+}
         
         // Draw placement tower (semi-transparent)
         if (placementTower.type != TowerType::NONE) {
