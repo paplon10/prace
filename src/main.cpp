@@ -387,11 +387,11 @@ float distance(const Point& a, const Point& b) {
 // Define water region (top-right corner)
 const bool isInWaterRegion(const Point& p) {
     // Blue water is approximately in the top-right corner of the map
-    return p.x > 450 && p.y < 200;
+    return p.x > 500 && p.y < 120;
 }
 
 // Function to check if a point is too close to the path
-bool isNearPath(const Point& p, float threshold = 45.0f) {
+bool isNearPath(const Point& p, float threshold = 28.0f) {
     // Check if the point is near any path segment
     for (size_t i = 0; i < waypoints.size() - 1; ++i) {
         const Point& a = waypoints[i];
@@ -1502,6 +1502,10 @@ int main()
         glfwGetWindowSize(window, &w, &h);
         renderer.updateWindowMetrics(w, h);
 
+        // Calculate scaling factors for responsiveness
+        float scaleX = (float)w / (float)WIDTH;
+        float scaleY = (float)h / (float)HEIGHT;
+
         // Handle input
         processInput(window);
 
@@ -1906,27 +1910,27 @@ int main()
         renderer.clearScreen({0.1, 0.2, 0.6, 1});
 
         // Draw background
-        renderer.renderRectangle({0, 0, GAME_WIDTH, HEIGHT}, backgroundTexture, {1, 1, 1, 1});
+        renderer.renderRectangle({0 * scaleX, 0 * scaleY, GAME_WIDTH * scaleX, HEIGHT * scaleY}, backgroundTexture, {1, 1, 1, 1});
         
         // Draw UI panel background
         renderer.renderRectangle(
-            {(float)GAME_WIDTH, 0, (float)PANEL_WIDTH, (float)HEIGHT},
+            {(float)GAME_WIDTH * scaleX, 0 * scaleY, (float)PANEL_WIDTH * scaleX, (float)HEIGHT * scaleY},
             {UI_BACKGROUND.r, UI_BACKGROUND.g, UI_BACKGROUND.b, UI_BACKGROUND.a}
         );
         
         // Draw bean count in top-right corner with larger size and better position
-        drawNumber(renderer, beanCount, GAME_WIDTH - 180, 15, 32.0f);  // Moved from -120 to -180 to accommodate larger numbers
+        drawNumber(renderer, beanCount, (GAME_WIDTH - 180) * scaleX, 15 * scaleY, 32.0f * scaleY);  // Moved from -120 to -180 to accommodate larger numbers
         
         // Draw round information in top-left corner
-        float roundTextX = 70;
-        float roundTextY = 15;
-        float roundDigitSize = 24.0f;
+        float roundTextX = 70 * scaleX;
+        float roundTextY = 15 * scaleY;
+        float roundDigitSize = 24.0f * scaleY;
         
         // Draw improved "R" symbol that's clearly not a P
-        float rSize = 30.0f;
-        float rX = roundTextX - 50;
+        float rSize = 30.0f * scaleY;
+        float rX = roundTextX - 50 * scaleX;
         float rY = roundTextY;
-        float thickness = 5.0f;
+        float thickness = 5.0f * scaleY;
         
         // Vertical line of R
         renderer.renderRectangle({rX, rY, thickness, rSize}, {1.0f, 1.0f, 1.0f, 1.0f});
@@ -1943,17 +1947,17 @@ int main()
         // Diagonal leg of R - made more prominent and extended
         for (int i = 0; i < rSize/2; i++) {
             // Create a clear diagonal line that extends further right
-            float xPos = rX + rSize * 0.4f + i * 0.5f;
-            float yPos = rY + rSize/2 + i;
+            float xPos = rX + rSize * 0.4f + i * 0.5f * scaleX;
+            float yPos = rY + rSize/2 + i * scaleY;
             renderer.renderRectangle({xPos, yPos, thickness, thickness/2}, {1.0f, 1.0f, 1.0f, 1.0f});
         }
         
         // Draw round number with background
         std::string roundStr = std::to_string(currentRound);
-        float bgWidth = roundDigitSize * 1.2f * roundStr.length() + 20;
+        float bgWidth = roundDigitSize * 1.2f * roundStr.length() + 20 * scaleX;
         
         renderer.renderRectangle(
-            {roundTextX - 5, roundTextY - 5, bgWidth, roundDigitSize + 10},
+            {roundTextX - 5 * scaleX, roundTextY - 5 * scaleY, bgWidth, roundDigitSize + 10 * scaleY},
             {0.0f, 0.0f, 0.0f, 0.5f}
         );
         
@@ -1963,13 +1967,13 @@ int main()
         }
         
         // Draw current lives
-        float livesX = 200;
-        float livesY = 15;
+        float livesX = 200 * scaleX;
+        float livesY = 15 * scaleY;
         
         // Draw heart icon for lives
         for (int i = 0; i < lives; i++) {
             renderer.renderRectangle(
-                {livesX + i * 30, livesY, 20, 20},
+                {livesX + i * 30 * scaleX, livesY, 20 * scaleX, 20 * scaleY},
                 {1.0f, 0.0f, 0.0f, 1.0f}  // Red heart
             );
         }
@@ -1978,20 +1982,20 @@ int main()
         if (isGameOver) {
             // Overlay with semi-transparent black
             renderer.renderRectangle(
-                {0, 0, (float)WIDTH, (float)HEIGHT},
+                {0, 0, (float)w, (float)h},
                 {0.0f, 0.0f, 0.0f, 0.7f}
             );
             
             // Game Over text
-            float gameOverX = WIDTH / 2 - 150;
-            float gameOverY = HEIGHT / 2 - 100;
-            float textHeight = 40.0f;
+            float gameOverX = w / 2 - 150 * scaleX;
+            float gameOverY = h / 2 - 100 * scaleY;
+            float textHeight = 40.0f * scaleY;
             
             // Draw "GAME OVER" text
             std::string gameOverText = "GAME OVER";
             for (int i = 0; i < 8; i++) {
-                float letterX = gameOverX + i * 35;
-                float letterWidth = 30.0f;
+                float letterX = gameOverX + i * 35 * scaleX;
+                float letterWidth = 30.0f * scaleX;
                 
                 // Draw letter background
                 renderer.renderRectangle(
@@ -2001,17 +2005,17 @@ int main()
             }
             
             // Draw "Click to restart" message
-            float restartY = gameOverY + 80;
+            float restartY = gameOverY + 80 * scaleY;
             renderer.renderRectangle(
-                {WIDTH / 2 - 120, restartY, 240, 5},
+                {w / 2 - 120 * scaleX, restartY, 240 * scaleX, 5 * scaleY},
                 {1.0f, 1.0f, 1.0f, 1.0f}
             );
             
             // Show final score (rounds completed)
             std::string finalScoreStr = "ROUNDS: " + std::to_string(currentRound);
-            float scoreY = restartY + 40;
+            float scoreY = restartY + 40 * scaleY;
             renderer.renderRectangle(
-                {WIDTH / 2 - 100, scoreY, 200, 30},
+                {w / 2 - 100 * scaleX, scoreY, 200 * scaleX, 30 * scaleY},
                 {0.0f, 0.0f, 0.3f, 0.8f}  // Blue score box
             );
             
@@ -2026,20 +2030,20 @@ int main()
         if (isPaused) {
             // Overlay with semi-transparent black
             renderer.renderRectangle(
-                {0, 0, (float)WIDTH, (float)HEIGHT},
+                {0, 0, (float)w, (float)h},
                 {0.0f, 0.0f, 0.0f, 0.5f}  // Less dark than game over screen
             );
             
             // Pause text
-            float pauseX = WIDTH / 2 - 120;
-            float pauseY = HEIGHT / 2 - 50;
-            float textHeight = 40.0f;
+            float pauseX = w / 2 - 120 * scaleX;
+            float pauseY = h / 2 - 50 * scaleY;
+            float textHeight = 40.0f * scaleY;
             
             // Draw "PAUSED" text
             std::string pauseText = "PAUSED";
             for (int i = 0; i < 6; i++) {
-                float letterX = pauseX + i * 35;
-                float letterWidth = 30.0f;
+                float letterX = pauseX + i * 35 * scaleX;
+                float letterWidth = 30.0f * scaleX;
                 
                 // Draw letter background
                 renderer.renderRectangle(
@@ -2049,9 +2053,9 @@ int main()
             }
             
             // Draw "Press any key to continue" message
-            float continueY = pauseY + 80;
+            float continueY = pauseY + 80 * scaleY;
             renderer.renderRectangle(
-                {WIDTH / 2 - 150, continueY, 300, 5},
+                {w / 2 - 150 * scaleX, continueY, 300 * scaleX, 5 * scaleY},
                 {1.0f, 1.0f, 1.0f, 1.0f}
             );
         }
@@ -2060,13 +2064,13 @@ int main()
         if (!isRoundActive && !isGameOver) {
             int countdown = (int)roundStartTimer + 1;
             std::string countdownStr = std::to_string(countdown);
-            float countdownX = WIDTH / 2 - 30;
-            float countdownY = 100;
-            float countdownSize = 60.0f;
+            float countdownX = w / 2 - 30 * scaleX;
+            float countdownY = 100 * scaleY;
+            float countdownSize = 60.0f * scaleY;
             
             // Draw large countdown number
             renderer.renderRectangle(
-                {countdownX - 10, countdownY - 10, countdownSize + 20, countdownSize + 20},
+                {countdownX - 10 * scaleX, countdownY - 10 * scaleY, countdownSize + 20 * scaleX, countdownSize + 20 * scaleY},
                 {0.0f, 0.0f, 0.0f, 0.7f}
             );
             
@@ -2075,8 +2079,8 @@ int main()
             }
             
             // Draw "NEXT ROUND" text using rectangles
-            float textY = countdownY + countdownSize + 20;
-            renderer.renderRectangle({WIDTH / 2 - 100, textY, 200, 5}, {1.0f, 1.0f, 1.0f, 1.0f});
+            float textY = countdownY + countdownSize + 20 * scaleY;
+            renderer.renderRectangle({w / 2 - 100 * scaleX, textY, 200 * scaleX, 5 * scaleY}, {1.0f, 1.0f, 1.0f, 1.0f});
         }
 
         // Draw tower selection buttons
@@ -2097,16 +2101,20 @@ int main()
                     buttonColor.g *= 0.7f;
                     buttonColor.b *= 0.7f;
                 }
-                
+                // Scale the button position and size
+                float bx = button.rect.x * scaleX;
+                float by = button.rect.y * scaleY;
+                float bw = button.rect.w * scaleX;
+                float bh = button.rect.h * scaleY;
                 renderer.renderRectangle(
-                    {button.rect.x, button.rect.y, button.rect.w, button.rect.h},
+                    {bx, by, bw, bh},
                     {buttonColor.r, buttonColor.g, buttonColor.b, buttonColor.a}
                 );
                 
                 // Draw tower preview with its specific color or texture
-                float towerSize = 32.0f;
-                float towerX = button.rect.x + button.rect.w/2 - towerSize/2;
-                float towerY = button.rect.y + 10;
+                float towerSize = 32.0f * scaleY;
+                float towerX = bx + bw/2 - towerSize/2;
+                float towerY = by + 10 * scaleY;
                 Color previewColor = getTowerColor(button.type);
                 
                 // Make the tower preview darker if can't afford
@@ -2131,19 +2139,19 @@ int main()
                 // Draw cost indicator
                 int cost = getTowerCost(button.type);
                 std::string costStr = std::to_string(cost);
-                float digitSize = 16.0f;
-                float costX = button.rect.x + 10;
-                float costY = button.rect.y + button.rect.h - 20;
+                float digitSize = 16.0f * scaleY;
+                float costX = bx + 10 * scaleX;
+                float costY = by + bh - 20 * scaleY;
                 
                 // Draw bean icon
                 renderer.renderRectangle(
-                    {costX, costY, 10.0f, 10.0f},
+                    {costX, costY, 10.0f * scaleY, 10.0f * scaleY},
                     {0.6f, 0.4f, 0.2f, 1.0f}
                 );
                 
                 // Draw digits for cost with increased spacing
                 for (size_t i = 0; i < costStr.length(); i++) {
-                    drawDigit(renderer, costStr[i] - '0', costX + 15 + i * (digitSize * 1.2f), costY - 5, digitSize);
+                    drawDigit(renderer, costStr[i] - '0', costX + 15 * scaleX + i * (digitSize * 1.2f), costY - 5 * scaleY, digitSize);
                 }
                 
                 // Draw tower count indicator
@@ -2159,18 +2167,18 @@ int main()
                 
                 if (towerCount > 0) {
                     std::string countStr = "x" + std::to_string(towerCount);
-                    float countX = button.rect.x + button.rect.w - 30;
-                    float countY = button.rect.y + 15;
+                    float countX = bx + bw - 30 * scaleX;
+                    float countY = by + 15 * scaleY;
                     
                     renderer.renderRectangle(
-                        {countX - 5, countY - 5, 30, 20},
+                        {countX - 5 * scaleX, countY - 5 * scaleY, 30 * scaleX, 20 * scaleY},
                         {0.0f, 0.0f, 0.0f, 0.5f}
                     );
                     
-                    float smallDigitSize = 14.0f;
+                    float smallDigitSize = 14.0f * scaleY;
                     for (size_t i = 0; i < countStr.length(); i++) {
                         if (countStr[i] == 'x') continue;
-                        drawDigit(renderer, countStr[i] - '0', countX + 10 + (i-1) * (smallDigitSize * 0.8f), countY, smallDigitSize);
+                        drawDigit(renderer, countStr[i] - '0', countX + 10 * scaleX + (i-1) * (smallDigitSize * 0.8f), countY, smallDigitSize);
                     }
                 }
             }
@@ -2180,22 +2188,22 @@ int main()
         if (towerMenu.isOpen) {
             // Draw menu background
             renderer.renderRectangle(
-                {(float)GAME_WIDTH, 0, (float)PANEL_WIDTH, (float)HEIGHT},
+                {(float)GAME_WIDTH * scaleX, 0 * scaleY, (float)PANEL_WIDTH * scaleX, (float)HEIGHT * scaleY},
                 {UI_BACKGROUND.r, UI_BACKGROUND.g, UI_BACKGROUND.b, 1.0f}
             );
             
             // Draw selected tower info
             if (towerMenu.selectedTower) {
                 // Draw tower name at the top
-                float nameY = 50;
+                float nameY = 50 * scaleY;
                 std::string towerName = getTowerTypeName(towerMenu.selectedTower->type);
                 
                 // Draw tower preview (larger)
-                float previewSize = TOWER_SIZE * 1.5f;
-                float previewY = 100;
+                float previewSize = TOWER_SIZE * 1.5f * scaleY;
+                float previewY = 100 * scaleY;
                 Color towerColor = getTowerColor(towerMenu.selectedTower->type);
                 renderer.renderRectangle(
-                    {GAME_WIDTH + PANEL_WIDTH/2 - previewSize/2, previewY, previewSize, previewSize},
+                    {GAME_WIDTH * scaleX + PANEL_WIDTH * scaleX/2 - previewSize/2, previewY, previewSize, previewSize},
                     {towerColor.r, towerColor.g, towerColor.b, 1.0f}
                 );
 
@@ -2327,7 +2335,7 @@ int main()
                 
                 // Draw X shape with thicker lines and better positioning
                 float xSize = 16.0f;  // Reduced size from 24.0f to 16.0f
-                float xX = GAME_WIDTH + PANEL_WIDTH - xSize - 10;  // Position in top right
+                float xX = GAME_WIDTH * scaleX + PANEL_WIDTH * scaleX - xSize - 10;  // Position in top right
                 float xY = 10;  // Small margin from top
                 float thickness = 3.0f;  // Reduced thickness from 4.0f to 3.0f
                 
