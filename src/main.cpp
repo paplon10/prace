@@ -8,6 +8,8 @@
 #include <string>
 #include <sstream>  
 #include <algorithm>  
+#include <map>
+#include <cctype>
 
 // Window size
 const int GAME_WIDTH = 640;
@@ -77,6 +79,9 @@ bool isPaused = false;  // Track if game is paused
 
 // Global variable for tracking when mouse was just pressed
 bool mouseJustPressed = false;
+
+// Add after game state variables
+float gameStartTimer = 2.0f; // Show 'GAME START' for 2 seconds
 
 // Tower struct
 struct Tower {
@@ -1254,6 +1259,9 @@ gl2d::Texture bossTexture;
 gl2d::Texture tankTexture;
 gl2d::Texture ghostTexture;
 
+// Add global texture for heart icon
+gl2d::Texture heartTexture;
+
 // Function to create simple colored texture if it doesn't exist
 void createSimpleTexture(const std::string& filename, const Color& color) {
     // Only create if file doesn't exist
@@ -1318,6 +1326,38 @@ void createEnemyTextures()
     createSimpleTexture("resources/ghost.png", getEnemyColor(EnemyType::GHOST));
 }
 
+std::map<char, gl2d::Texture> alphabetTextures;
+
+void loadAlphabetTextures() {
+    for (char c = 'A'; c <= 'Z'; ++c) {
+        std::string path = "resources/alphabet/";
+        path += c;
+        path += ".png";
+        gl2d::Texture tex;
+        tex.loadFromFile(path.c_str());
+        alphabetTextures[c] = tex;
+    }
+}
+
+void drawText(gl2d::Renderer2D& renderer, const std::string& text, float x, float y, float size, float spacing = 2.0f) {
+    float cursorX = x;
+    for (char c : text) {
+        if (c == ' ') {
+            cursorX += size * 0.6f; // Space width
+            continue;
+        }
+        char upper = std::toupper(static_cast<unsigned char>(c));
+        auto it = alphabetTextures.find(upper);
+        if (it != alphabetTextures.end() && it->second.id != 0) {
+            renderer.renderRectangle(
+                {cursorX, y, size, size},
+                it->second, {1, 1, 1, 1}
+            );
+        }
+        cursorX += size + spacing;
+    }
+}
+
 int main()
 {
     // Initialize GLFW
@@ -1361,6 +1401,9 @@ int main()
     // Create GL2D renderer
     gl2d::Renderer2D renderer;
     renderer.create();
+
+    // Load alphabet textures for text rendering
+    loadAlphabetTextures();
 
     // Load background texture
     gl2d::Texture backgroundTexture;
@@ -1462,6 +1505,15 @@ int main()
         ghostPath = "../resources/ghost.png";
         ghostTexture.loadFromFile(ghostPath.c_str());
     }
+
+    std::string heartPath = "resources/heart.png";
+    heartTexture.loadFromFile(heartPath.c_str());
+    if (heartTexture.id == 0) {
+        heartPath = "../resources/heart.png";
+        heartTexture.loadFromFile(heartPath.c_str());
+    }
+    std::cout << "Heart texture ID: " << heartTexture.id << std::endl;
+
 
     // Initialize enemies
     std::vector<Enemy> enemies(MAX_ENEMIES);
@@ -1887,22 +1939,28 @@ int main()
             // Remove used banana peels and empty cacti
             towers.erase(std::remove_if(towers.begin(), towers.end(),
                 [](const Tower& tower) {
-                    return (tower.type == TowerType::BANANA_PEEL && tower.isUsed);
-                    // No longer remove cacti since they last forever
+                    return (tower.type == TowerType::BANANA_PEEL && tower.isUsed); 
                 }), towers.end());
+
+            // Decrease game start timer
+            if (gameStartTimer > 0.0f) {
+                gameStartTimer -= deltaTime;
+            }
         }
 
         // Update tower button hover states
-        for (auto& button : towerButtons) {
-            button.isHovered = isPointInRect((float)mouseX, (float)mouseY, button.rect);
-            if (button.isHovered && mouseLeftPressed && !towerMenu.isOpen) {  // Only allow tower selection if menu is not open
-                // If clicking the same tower type that's already selected, deselect it
-                if (placementTower.type == button.type) {
-                    placementTower.setType(TowerType::NONE);
-                } else {
-                    placementTower.setType(button.type);
+        if (!isPaused) {
+            for (auto& button : towerButtons) {
+                button.isHovered = isPointInRect((float)mouseX, (float)mouseY, button.rect);
+                if (button.isHovered && mouseLeftPressed && !towerMenu.isOpen) {  // Only allow tower selection if menu is not open
+                    // If clicking the same tower type that's already selected, deselect it
+                    if (placementTower.type == button.type) {
+                        placementTower.setType(TowerType::NONE);
+                    } else {
+                        placementTower.setType(button.type);
+                    }
+                    mouseLeftPressed = false;  // Consume the click
                 }
-                mouseLeftPressed = false;  // Consume the click
             }
         }
 
@@ -1926,31 +1984,11 @@ int main()
         float roundTextY = 15 * scaleY;
         float roundDigitSize = 24.0f * scaleY;
         
-        // Draw improved "R" symbol that's clearly not a P
+        // Draw 'R' symbol using alphabet texture
         float rSize = 30.0f * scaleY;
         float rX = roundTextX - 50 * scaleX;
         float rY = roundTextY;
-        float thickness = 5.0f * scaleY;
-        
-        // Vertical line of R
-        renderer.renderRectangle({rX, rY, thickness, rSize}, {1.0f, 1.0f, 1.0f, 1.0f});
-        
-        // Top horizontal line of R
-        renderer.renderRectangle({rX, rY, rSize * 0.7f, thickness}, {1.0f, 1.0f, 1.0f, 1.0f});
-        
-        // Middle horizontal line of R
-        renderer.renderRectangle({rX, rY + rSize/2 - thickness/2, rSize * 0.7f, thickness}, {1.0f, 1.0f, 1.0f, 1.0f});
-        
-        // Top curve of R
-        renderer.renderRectangle({rX + rSize * 0.7f - thickness, rY, thickness, rSize/2}, {1.0f, 1.0f, 1.0f, 1.0f});
-        
-        // Diagonal leg of R - made more prominent and extended
-        for (int i = 0; i < rSize/2; i++) {
-            // Create a clear diagonal line that extends further right
-            float xPos = rX + rSize * 0.4f + i * 0.5f * scaleX;
-            float yPos = rY + rSize/2 + i * scaleY;
-            renderer.renderRectangle({xPos, yPos, thickness, thickness/2}, {1.0f, 1.0f, 1.0f, 1.0f});
-        }
+        drawText(renderer, "R", rX, rY, rSize);
         
         // Draw round number with background
         std::string roundStr = std::to_string(currentRound);
@@ -1971,11 +2009,13 @@ int main()
         float livesY = 15 * scaleY;
         
         // Draw heart icon for lives
-        for (int i = 0; i < lives; i++) {
-            renderer.renderRectangle(
-                {livesX + i * 30 * scaleX, livesY, 20 * scaleX, 20 * scaleY},
-                {1.0f, 0.0f, 0.0f, 1.0f}  // Red heart
-            );
+       if (!isGameOver) {
+            for (int i = 0; i < lives; i++) {
+                renderer.renderRectangle(
+                    {livesX + i * 30 * scaleX, livesY, 20 * scaleX, 20 * scaleY},
+                    heartTexture, {1.0f, 1.0f, 1.0f, 1.0f}
+                );
+            }
         }
         
         // If game is over, show game over screen
@@ -1986,38 +2026,14 @@ int main()
                 {0.0f, 0.0f, 0.0f, 0.7f}
             );
             
-            // Game Over text
-            float gameOverX = w / 2 - 150 * scaleX;
-            float gameOverY = h / 2 - 100 * scaleY;
-            float textHeight = 40.0f * scaleY;
-            
-            // Draw "GAME OVER" text
-            std::string gameOverText = "GAME OVER";
-            for (int i = 0; i < 8; i++) {
-                float letterX = gameOverX + i * 35 * scaleX;
-                float letterWidth = 30.0f * scaleX;
-                
-                // Draw letter background
-                renderer.renderRectangle(
-                    {letterX, gameOverY, letterWidth, textHeight},
-                    {0.8f, 0.0f, 0.0f, 1.0f}  // Red background
-                );
-            }
-            
-            // Draw "Click to restart" message
-            float restartY = gameOverY + 80 * scaleY;
-            renderer.renderRectangle(
-                {w / 2 - 120 * scaleX, restartY, 240 * scaleX, 5 * scaleY},
-                {1.0f, 1.0f, 1.0f, 1.0f}
-            );
-            
-            // Show final score (rounds completed)
-            std::string finalScoreStr = "ROUNDS: " + std::to_string(currentRound);
-            float scoreY = restartY + 40 * scaleY;
-            renderer.renderRectangle(
-                {w / 2 - 100 * scaleX, scoreY, 200 * scaleX, 30 * scaleY},
-                {0.0f, 0.0f, 0.3f, 0.8f}  // Blue score box
-            );
+            // Show 'YOU LOST' centered
+            std::string lostText = "YOU LOST";
+            float textSize = 64.0f * scaleY;
+            float textWidth = (lostText.length() * (textSize + 2.0f));
+            float x = (w - textWidth) / 2.0f;
+            float y = (h / 2.0f) - (textSize / 2.0f);
+            renderer.renderRectangle({x - 30, y - 30, textWidth + 60, textSize + 60}, {0, 0, 0, 0.8f});
+            drawText(renderer, lostText, x, y, textSize);
             
             // Check for click to restart - use mouseJustPressed instead of mouseLeftPressed
             if (mouseJustPressed) {
@@ -2034,26 +2050,17 @@ int main()
                 {0.0f, 0.0f, 0.0f, 0.5f}  // Less dark than game over screen
             );
             
-            // Pause text
-            float pauseX = w / 2 - 120 * scaleX;
-            float pauseY = h / 2 - 50 * scaleY;
-            float textHeight = 40.0f * scaleY;
-            
-            // Draw "PAUSED" text
+            // Show 'PAUSED' centered
             std::string pauseText = "PAUSED";
-            for (int i = 0; i < 6; i++) {
-                float letterX = pauseX + i * 35 * scaleX;
-                float letterWidth = 30.0f * scaleX;
-                
-                // Draw letter background
-                renderer.renderRectangle(
-                    {letterX, pauseY, letterWidth, textHeight},
-                    {0.0f, 0.5f, 0.8f, 1.0f}  // Blue background
-                );
-            }
+            float textSize = 64.0f * scaleY;
+            float textWidth = (pauseText.length() * (textSize + 2.0f));
+            float x = (w - textWidth) / 2.0f;
+            float y = (h / 2.0f) - (textSize / 2.0f);
+            renderer.renderRectangle({x - 30, y - 30, textWidth + 60, textSize + 60}, {0, 0, 0, 0.8f});
+            drawText(renderer, pauseText, x, y, textSize);
             
             // Draw "Press any key to continue" message
-            float continueY = pauseY + 80 * scaleY;
+            float continueY = y + textSize + 40 * scaleY;
             renderer.renderRectangle(
                 {w / 2 - 150 * scaleX, continueY, 300 * scaleX, 5 * scaleY},
                 {1.0f, 1.0f, 1.0f, 1.0f}
