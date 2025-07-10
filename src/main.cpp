@@ -20,6 +20,7 @@ const int HEIGHT = 640;
 // Structure to hold 2D points
 struct Point {
     float x, y;
+    Point() : x(0.0f), y(0.0f) {}
     Point(float _x, float _y) : x(_x), y(_y) {}
 };
 
@@ -382,6 +383,15 @@ std::vector<Point> waypoints = {
     Point(-69, 544) //end point
 };
 
+// Function to get scaled waypoints based on current scale
+std::vector<Point> getScaledWaypoints(float scaleX, float scaleY) {
+    std::vector<Point> scaled;
+    for (const auto& wp : waypoints) {
+        scaled.emplace_back(wp.x * scaleX, wp.y * scaleY);
+    }
+    return scaled;
+}
+
 // Function to calculate distance between two points
 float distance(const Point& a, const Point& b) {
     float dx = b.x - a.x;
@@ -396,39 +406,22 @@ const bool isInWaterRegion(const Point& p) {
 }
 
 // Function to check if a point is too close to the path
-bool isNearPath(const Point& p, float threshold = 28.0f) {
-    // Check if the point is near any path segment
+bool isNearPath(const Point& p, const std::vector<Point>& waypoints, float threshold = 28.0f) {
     for (size_t i = 0; i < waypoints.size() - 1; ++i) {
         const Point& a = waypoints[i];
         const Point& b = waypoints[i + 1];
-        
-        // Calculate distance from point to line segment
         float lineLength = distance(a, b);
-        if (lineLength < 0.1f) continue; // Skip very short segments
-        
-        // Vector from a to b
+        if (lineLength < 0.1f) continue;
         float abx = b.x - a.x;
         float aby = b.y - a.y;
-        
-        // Vector from a to p
         float apx = p.x - a.x;
         float apy = p.y - a.y;
-        
-        // Project ap onto ab to find the closest point
         float projection = (apx * abx + apy * aby) / (abx * abx + aby * aby);
-        
-        // Clamp projection to [0,1] to get point on segment
         float clampedProjection = std::max(0.0f, std::min(1.0f, projection));
-        
-        // Calculate closest point on segment
         float closestX = a.x + clampedProjection * abx;
         float closestY = a.y + clampedProjection * aby;
-        
-        // Calculate distance from p to closest point
         float dist = std::sqrt((p.x - closestX) * (p.x - closestX) + 
                               (p.y - closestY) * (p.y - closestY));
-        
-        // If distance is less than threshold, point is near the path
         if (dist < threshold) {
             return true;
         }
@@ -438,53 +431,40 @@ bool isNearPath(const Point& p, float threshold = 28.0f) {
 
 // Structure for enemies
 struct Enemy {
-    Point pos;
+    // Remove: Point pos;
     int currentWaypoint;
     bool isActive;
     EnemyType type;
     std::string name;
     float health;
     float maxHealth;
-    
-    Enemy() : pos(waypoints[0]), currentWaypoint(0), isActive(false), type(EnemyType::ZOMBIE),
-              health(0.0f), maxHealth(0.0f) {
+    float progress; // 0.0 to 1.0 between waypoints
+    // Add:
+    Point getPosition(const std::vector<Point>& waypoints) const {
+        if (currentWaypoint >= waypoints.size() - 1) return waypoints.back();
+        const Point& a = waypoints[currentWaypoint];
+        const Point& b = waypoints[currentWaypoint + 1];
+        return Point(a.x + (b.x - a.x) * progress, a.y + (b.y - a.y) * progress);
+    }
+    Enemy() : currentWaypoint(0), isActive(false), type(EnemyType::ZOMBIE),
+              health(0.0f), maxHealth(0.0f), progress(0.0f) {
         name = getEnemyName(type);
     }
-    
     void setType(EnemyType newType) {
         type = newType;
         name = getEnemyName(type);
-        
-        // Base health values - starting lower for easier early game
         float baseHealth = 0.0f;
-        
-        // Set health based on enemy type
         switch(type) {
-            case EnemyType::ZOMBIE:
-                baseHealth = 40.0f;  
-                break;
-            case EnemyType::SKELETON:
-                baseHealth = 20.0f;  
-                break;
-            case EnemyType::BOSS:
-                baseHealth = 400.0f; 
-                break;
-            case EnemyType::TANK:
-                baseHealth = 100.0f;  // High health but not as much as boss
-                break;
-            case EnemyType::GHOST:
-                baseHealth = 10.0f;   // Half of skeleton's health
-                break;
+            case EnemyType::ZOMBIE: baseHealth = 40.0f; break;
+            case EnemyType::SKELETON: baseHealth = 20.0f; break;
+            case EnemyType::BOSS: baseHealth = 400.0f; break;
+            case EnemyType::TANK: baseHealth = 100.0f; break;
+            case EnemyType::GHOST: baseHealth = 10.0f; break;
         }
-        
-        // Health scales with round number - less aggressive scaling
         float healthMultiplier = 1.0f;
         if (currentRound > 1) {
-            // Linear scaling with a smaller increase per round
-            // Round 1: 1.0x, Round 2: 1.1x, Round 3: 1.2x, Round 4: 1.3x, etc.
             healthMultiplier = 1.0f + ((currentRound - 1) * 0.1f);
         }
-        
         maxHealth = baseHealth * healthMultiplier;
         health = maxHealth;
     }
@@ -525,26 +505,26 @@ Color getEnemyColor(EnemyType type) {
 
 // Function to get enemy speed based on type
 float getEnemySpeed(EnemyType type) {
-    // Base speeds - lower than original speeds to make early game easier
+    // Base speeds in pixels per second
     float baseSpeed = 0.0f;
     
-    // Get base speed for enemy type
+    // Get base speed for enemy type (in pixels per second)
     switch (type) {
         case EnemyType::SKELETON:
-            baseSpeed = 80.0f;  // Reduced from 120.0f
+            baseSpeed = 80.0f;  // fast
             break;
         case EnemyType::BOSS:
-            baseSpeed = 15.0f;  // Very slow, reduced from 30.0f
+            baseSpeed = 25.0f;  // very slow
             break;
         case EnemyType::TANK:
-            baseSpeed = 20.0f;  // Very slow
+            baseSpeed = 35.0f;  // slow
             break;
         case EnemyType::GHOST:
-            baseSpeed = 100.0f; // Very fast
+            baseSpeed = 120.0f;  // very fast
             break;
         case EnemyType::ZOMBIE:
         default:
-            baseSpeed = 40.0f;  // Reduced from 60.0f
+            baseSpeed = 50.0f;  // normal
             break;
     }
     
@@ -702,137 +682,136 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 }
 
 // Function to update enemy position
-void updateEnemy(Enemy& enemy, float deltaTime, const std::vector<Tower>& towers, int& beanCount) {
+void updateEnemy(Enemy& enemy, float deltaTime, const std::vector<Tower>& towers, int& beanCount, const std::vector<Point>& waypoints) {
     if (!enemy.isActive || enemy.currentWaypoint >= waypoints.size() - 1) return;
-
-    Point& target = waypoints[enemy.currentWaypoint + 1];
-    float dx = target.x - enemy.pos.x;
-    float dy = target.y - enemy.pos.y;
-    float dist = std::sqrt(dx * dx + dy * dy);
+    // Get current and next waypoint
+    const Point& a = waypoints[enemy.currentWaypoint];
+    const Point& b = waypoints[enemy.currentWaypoint + 1];
+    float segLen = distance(a, b);
+    if (segLen < 1e-4f) {
+        enemy.currentWaypoint++;
+        enemy.progress = 0.0f;
+        return;
+    }
     
-    float speed = getEnemySpeed(enemy.type);
+    // Get base speed and adjust for window scaling
+    float baseSpeed = getEnemySpeed(enemy.type);
     
-    if (dist > 1.0f) {
-        float moveX = (dx / dist) * speed * deltaTime;
-        float moveY = (dy / dist) * speed * deltaTime;
-        enemy.pos.x += moveX;
-        enemy.pos.y += moveY;
-        
-        // Check for banana peel traps and cactus traps
-        for (const auto& tower : towers) {
-            if (tower.type == TowerType::BANANA_PEEL && !tower.isUsed) {
-                if (distance(enemy.pos, tower.pos) < ENEMY_SIZE / 2) {
-                    // Enemy stepped on a banana peel!
-                    // Ghosts are immune to banana peel damage
-                    if (enemy.type != EnemyType::GHOST) {
-                        enemy.health -= tower.damage;  // Deal damage instantly
-
-                        // Mark the banana peel as used
-                        Tower& actualTower = const_cast<Tower&>(tower);
-                        actualTower.isUsed = true;
-                        
-                        // If enemy is killed by banana peel
-                        if (enemy.health <= 0) {
-                            enemy.isActive = false;
-                            // Add beans based on enemy type
-                            beanCount += (enemy.type == EnemyType::ZOMBIE) ? ZOMBIE_BEANS : 
-                                         (enemy.type == EnemyType::SKELETON) ? SKELETON_BEANS : 
-                                         (enemy.type == EnemyType::TANK) ? TANK_BEANS : BOSS_BEANS;
-                        }
+    // Calculate the average segment length to normalize speed
+    float totalPathLength = 0.0f;
+    for (size_t i = 0; i < waypoints.size() - 1; i++) {
+        totalPathLength += distance(waypoints[i], waypoints[i + 1]);
+    }
+    float averageSegmentLength = totalPathLength / (waypoints.size() - 1);
+    
+    // Adjust speed based on segment length relative to average
+    // Longer segments should have slower movement
+    float segmentRatio = segLen / averageSegmentLength;
+    float speedMultiplier = 1.0f / std::sqrt(segmentRatio);
+    float adjustedSpeed = baseSpeed * speedMultiplier;
+    
+    float moveDist = adjustedSpeed * deltaTime;
+    float moveProgress = moveDist / segLen;
+    enemy.progress += moveProgress;
+    
+    while (enemy.progress >= 1.0f && enemy.currentWaypoint < waypoints.size() - 2) {
+        enemy.currentWaypoint++;
+        enemy.progress -= 1.0f;
+        // update a, b, segLen for next segment
+        if (enemy.currentWaypoint < waypoints.size() - 1) {
+            const Point& a2 = waypoints[enemy.currentWaypoint];
+            const Point& b2 = waypoints[enemy.currentWaypoint + 1];
+            segLen = distance(a2, b2);
+            if (segLen < 1e-4f) break;
+            // Recalculate speed multiplier for new segment
+            segmentRatio = segLen / averageSegmentLength;
+            speedMultiplier = 1.0f / std::sqrt(segmentRatio);
+            adjustedSpeed = baseSpeed * speedMultiplier;
+        }
+    }
+    if (enemy.progress >= 1.0f) {
+        enemy.currentWaypoint++;
+        enemy.progress = 0.0f;
+    }
+    if (enemy.currentWaypoint >= waypoints.size() - 1) {
+        enemy.isActive = false;
+        lives--;
+        if (lives <= 0) {
+            isGameOver = true;
+            std::cout << "GAME OVER! Enemies reached the exit!" << std::endl;
+        } else {
+            std::cout << "Enemy escaped! Lives remaining: " << lives << std::endl;
+        }
+        return;
+    }
+    // Compute actual position for collision checks
+    Point pos = enemy.getPosition(waypoints);
+    for (const auto& tower : towers) {
+        if (tower.type == TowerType::BANANA_PEEL && !tower.isUsed) {
+            if (distance(pos, tower.pos) < ENEMY_SIZE / 2) {
+                if (enemy.type != EnemyType::GHOST) {
+                    enemy.health -= tower.damage;
+                    Tower& actualTower = const_cast<Tower&>(tower);
+                    actualTower.isUsed = true;
+                    if (enemy.health <= 0) {
+                        enemy.isActive = false;
+                        beanCount += (enemy.type == EnemyType::ZOMBIE) ? ZOMBIE_BEANS : 
+                                     (enemy.type == EnemyType::SKELETON) ? SKELETON_BEANS : 
+                                     (enemy.type == EnemyType::TANK) ? TANK_BEANS : BOSS_BEANS;
                     }
-                    // Ghost passes through banana peel silently
-                }
-            }
-            else if (tower.type == TowerType::CACTUS && tower.usesLeft != 0) {
-                if (distance(enemy.pos, tower.pos) < ENEMY_SIZE / 2) {
-                    // Enemy is on a cactus - deal small continuous damage
-                    // Ghosts are immune to cactus damage
-                    if (enemy.type != EnemyType::GHOST) {
-                        enemy.health -= tower.damage * deltaTime;  // Deal damage per second
-                        
-                        // If enemy is killed by cactus
-                        if (enemy.health <= 0) {
-                            enemy.isActive = false;
-                            // Add beans based on enemy type
-                            beanCount += (enemy.type == EnemyType::ZOMBIE) ? ZOMBIE_BEANS : 
-                                         (enemy.type == EnemyType::SKELETON) ? SKELETON_BEANS : 
-                                         (enemy.type == EnemyType::TANK) ? TANK_BEANS : BOSS_BEANS;
-                        }
-                    }
-                    // Ghost passes through cactus silently
                 }
             }
         }
-    } else {
-        enemy.currentWaypoint++;
-        if (enemy.currentWaypoint >= waypoints.size() - 1) {
-            enemy.isActive = false;
-            
-            // Enemy reached the exit - reduce lives!
-            lives--;
-            
-            // Check for game over
-            if (lives <= 0) {
-                isGameOver = true;
-                std::cout << "GAME OVER! Enemies reached the exit!" << std::endl;
-            } else {
-                std::cout << "Enemy escaped! Lives remaining: " << lives << std::endl;
+        else if (tower.type == TowerType::CACTUS && tower.usesLeft != 0) {
+            if (distance(pos, tower.pos) < ENEMY_SIZE / 2) {
+                if (enemy.type != EnemyType::GHOST) {
+                    enemy.health -= tower.damage * deltaTime;
+                    if (enemy.health <= 0) {
+                        enemy.isActive = false;
+                        beanCount += (enemy.type == EnemyType::ZOMBIE) ? ZOMBIE_BEANS : 
+                                     (enemy.type == EnemyType::SKELETON) ? SKELETON_BEANS : 
+                                     (enemy.type == EnemyType::TANK) ? TANK_BEANS : BOSS_BEANS;
+                    }
+                }
             }
         }
     }
 }
 
 // Function to check if any part of a tower overlaps with the path or water
-bool canPlaceTower(const Point& center, float size, TowerType type = TowerType::APPLE) {
-    // First check if tower is in the game area
+bool canPlaceTower(const Point& center, float size, TowerType type, const std::vector<Point>& waypoints) {
     if (center.x > GAME_WIDTH - size/2) {
-        return false;  // Tower is in or too close to the UI panel
+        return false;
     }
-
-    // Special case for Banana Peel and Cactus
     if (type == TowerType::BANANA_PEEL || type == TowerType::CACTUS) {
-        // These types can ONLY be placed on the path
-        return isNearPath(center, 20.0f);  // Must be within 20 pixels of path center
+        return isNearPath(center, waypoints, 20.0f);
     }
-
-    // Check multiple points on the tower including corners and more edge points
     float halfSize = size / 2.0f;
     float quarterSize = size / 4.0f;
-    
-    // Create a more detailed grid of points to check
     std::vector<Point> checkPoints = {
-        center, // Center
-        
-        // Four corners
-        Point(center.x - halfSize, center.y - halfSize), // Top-left
-        Point(center.x + halfSize, center.y - halfSize), // Top-right
-        Point(center.x - halfSize, center.y + halfSize), // Bottom-left
-        Point(center.x + halfSize, center.y + halfSize), // Bottom-right
-        
-        // Middle of each edge
-        Point(center.x - halfSize, center.y), // Left middle
-        Point(center.x + halfSize, center.y), // Right middle
-        Point(center.x, center.y - halfSize), // Top middle
-        Point(center.x, center.y + halfSize), // Bottom middle
-        
-        // Quarter points on each edge
-        Point(center.x - halfSize, center.y - quarterSize), // Left edge 1/4
-        Point(center.x - halfSize, center.y + quarterSize), // Left edge 3/4
-        Point(center.x + halfSize, center.y - quarterSize), // Right edge 1/4
-        Point(center.x + halfSize, center.y + quarterSize), // Right edge 3/4
-        Point(center.x - quarterSize, center.y - halfSize), // Top edge 1/4
-        Point(center.x + quarterSize, center.y - halfSize), // Top edge 3/4
-        Point(center.x - quarterSize, center.y + halfSize), // Bottom edge 1/4
-        Point(center.x + quarterSize, center.y + halfSize)  // Bottom edge 3/4
+        center,
+        Point(center.x - halfSize, center.y - halfSize),
+        Point(center.x + halfSize, center.y - halfSize),
+        Point(center.x - halfSize, center.y + halfSize),
+        Point(center.x + halfSize, center.y + halfSize),
+        Point(center.x - halfSize, center.y),
+        Point(center.x + halfSize, center.y),
+        Point(center.x, center.y - halfSize),
+        Point(center.x, center.y + halfSize),
+        Point(center.x - halfSize, center.y - quarterSize),
+        Point(center.x - halfSize, center.y + quarterSize),
+        Point(center.x + halfSize, center.y - quarterSize),
+        Point(center.x + halfSize, center.y + quarterSize),
+        Point(center.x - quarterSize, center.y - halfSize),
+        Point(center.x + quarterSize, center.y - halfSize),
+        Point(center.x - quarterSize, center.y + halfSize),
+        Point(center.x + quarterSize, center.y + halfSize)
     };
-    
-    // Check if any of the points are in a restricted area
     for (const auto& point : checkPoints) {
-        if (isInWaterRegion(point) || isNearPath(point)) {
+        if (isInWaterRegion(point) || isNearPath(point, waypoints)) {
             return false;
         }
     }
-    
     return true;
 }
 
@@ -840,20 +819,18 @@ bool canPlaceTower(const Point& center, float size, TowerType type = TowerType::
 std::vector<Projectile> projectiles(100); // Pool of projectiles
 
 // Function to find closest enemy to a point
-Enemy* findClosestEnemy(const Point& pos, float range, const std::vector<Enemy>& enemies) {
+Enemy* findClosestEnemy(const Point& pos, float range, const std::vector<Enemy>& enemies, const std::vector<Point>& waypoints) {
     Enemy* closest = nullptr;
     float minDist = range;
-    
     for (const auto& enemy : enemies) {
         if (!enemy.isActive) continue;
-        
-        float dist = distance(pos, enemy.pos);
+        Point enemyPos = enemy.getPosition(waypoints);
+        float dist = distance(pos, enemyPos);
         if (dist < minDist) {
             minDist = dist;
             closest = const_cast<Enemy*>(&enemy);
         }
     }
-    
     return closest;
 }
 
@@ -1558,6 +1535,26 @@ int main()
         float scaleX = (float)w / (float)WIDTH;
         float scaleY = (float)h / (float)HEIGHT;
 
+        // Update tower button positions and sizes based on window size
+        float buttonScale = std::min(scaleX, scaleY); // Use minimum to maintain aspect ratio
+        float panelWidth = PANEL_WIDTH * scaleX;
+        float buttonWidth = std::min(160.0f * buttonScale, panelWidth * 0.8f); // Max 80% of panel width
+        float buttonHeight = 60.0f * buttonScale;
+        float buttonSpacing = 70.0f * buttonScale;
+        float startY = 50.0f * buttonScale;
+        
+        std::vector<TowerButton> towerButtons = {
+            TowerButton((GAME_WIDTH + 20) * scaleX, startY, buttonWidth, buttonHeight, TowerType::APPLE),
+            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing, buttonWidth, buttonHeight, TowerType::CARROT),
+            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing * 2, buttonWidth, buttonHeight, TowerType::POTATO),
+            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing * 3, buttonWidth, buttonHeight, TowerType::PINEAPPLE),
+            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing * 4, buttonWidth, buttonHeight, TowerType::BANANA_PEEL),
+            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing * 5, buttonWidth, buttonHeight, TowerType::CACTUS)
+        };
+
+        // Get scaled waypoints for this frame
+        auto scaledWaypoints = getScaledWaypoints(scaleX, scaleY);
+
         // Handle input
         processInput(window);
 
@@ -1703,7 +1700,7 @@ int main()
                         bool canPlace = true;
                         
                         // Don't allow placing overlapping with path or water
-                        if (!canPlaceTower(clickPos, TOWER_SIZE, placementTower.type)) {
+                        if (!canPlaceTower(clickPos, TOWER_SIZE, placementTower.type, scaledWaypoints)) {
                             canPlace = false;
                             if (placementTower.type == TowerType::BANANA_PEEL) {
                                 std::cout << "Banana Peel must be placed directly on the path!" << std::endl;
@@ -1776,7 +1773,7 @@ int main()
 
             // Update all active enemies
             for (auto& enemy : enemies) {
-                updateEnemy(enemy, deltaTime, towers, beanCount);
+                updateEnemy(enemy, deltaTime, towers, beanCount, scaledWaypoints);
             }
 
             // Handle round system
@@ -1803,7 +1800,7 @@ int main()
                                 if (!enemy.isActive) {
                                     enemy.isActive = true;
                                     enemy.currentWaypoint = 0;
-                                    enemy.pos = waypoints[0];
+                                    enemy.progress = 0.0f;
                                     
                                     // Spawn boss as the last enemy of a boss round
                                     if (isBossRound(currentRound) && enemiesLeftInRound == 1) {
@@ -1862,31 +1859,28 @@ int main()
                     
                     // Only shooting towers need to find targets and shoot
                     if (tower.type != TowerType::BANANA_PEEL && tower.type != TowerType::CACTUS) {
-                        // Check if tower can shoot
                         if (tower.shootTimer >= 1.0f / tower.attackSpeed) {
                             if (tower.type == TowerType::PINEAPPLE) {
-                                // For Pineapple tower, check if any enemy is in range
                                 bool enemyInRange = false;
                                 for (const auto& enemy : enemies) {
-                                    if (enemy.isActive && distance(tower.pos, enemy.pos) <= tower.range) {
-                                        enemyInRange = true;
-                                        break;
+                                    if (enemy.isActive) {
+                                        Point enemyPos = enemy.getPosition(scaledWaypoints);
+                                        if (distance(tower.pos, enemyPos) <= tower.range) {
+                                            enemyInRange = true;
+                                            break;
+                                        }
                                     }
                                 }
-                                
                                 if (enemyInRange) {
-                                    // Shoot in all 8 directions
                                     spawnProjectilesInAllDirections(projectiles, tower.pos, tower);
-                                    tower.shootTimer = 0; // Reset shoot timer
+                                    tower.shootTimer = 0;
                                 }
                             } else {
-                                // For other towers, find closest enemy in range
-                                Enemy* target = findClosestEnemy(tower.pos, tower.range, enemies);
-                                
+                                Enemy* target = findClosestEnemy(tower.pos, tower.range, enemies, scaledWaypoints);
                                 if (target) {
-                                    // Spawn projectile aimed at the target
-                                    spawnProjectile(projectiles, tower.pos, target->pos, tower);
-                                    tower.shootTimer = 0; // Reset shoot timer
+                                    Point targetPos = target->getPosition(scaledWaypoints);
+                                    spawnProjectile(projectiles, tower.pos, targetPos, tower);
+                                    tower.shootTimer = 0;
                                 }
                             }
                         }
@@ -1906,7 +1900,8 @@ int main()
                     
                     float enemySize = (enemy.type == EnemyType::BOSS) ? BOSS_SIZE : ENEMY_SIZE;
                     
-                    if (distance(proj.pos, enemy.pos) < enemySize / 2) {
+                    Point enemyPos = enemy.getPosition(scaledWaypoints);
+                    if (distance(proj.pos, enemyPos) < enemySize / 2) {
                         // Hit! Deactivate projectile
                         proj.active = false;
                         
@@ -2012,7 +2007,7 @@ int main()
        if (!isGameOver) {
             for (int i = 0; i < lives; i++) {
                 renderer.renderRectangle(
-                    {livesX + i * 30 * scaleX, livesY, 20 * scaleX, 20 * scaleY},
+                    {livesX + i * 30 * scaleX, livesY, 20 * scaleX, 20 * scaleY * (scaleY * 0.9f)},
                     heartTexture, {1.0f, 1.0f, 1.0f, 1.0f}
                 );
             }
@@ -2108,20 +2103,21 @@ int main()
                     buttonColor.g *= 0.7f;
                     buttonColor.b *= 0.7f;
                 }
-                // Scale the button position and size
-                float bx = button.rect.x * scaleX;
-                float by = button.rect.y * scaleY;
-                float bw = button.rect.w * scaleX;
-                float bh = button.rect.h * scaleY;
+                
+                // Use the same conservative scaling for all visual elements
+                float bx = button.rect.x;
+                float by = button.rect.y;
+                float bw = button.rect.w;
+                float bh = button.rect.h;
                 renderer.renderRectangle(
                     {bx, by, bw, bh},
                     {buttonColor.r, buttonColor.g, buttonColor.b, buttonColor.a}
                 );
                 
                 // Draw tower preview with its specific color or texture
-                float towerSize = 32.0f * scaleY;
+                float towerSize = 32.0f * buttonScale;
                 float towerX = bx + bw/2 - towerSize/2;
-                float towerY = by + 10 * scaleY;
+                float towerY = by + 10 * buttonScale;
                 Color previewColor = getTowerColor(button.type);
                 
                 // Make the tower preview darker if can't afford
@@ -2146,19 +2142,19 @@ int main()
                 // Draw cost indicator
                 int cost = getTowerCost(button.type);
                 std::string costStr = std::to_string(cost);
-                float digitSize = 16.0f * scaleY;
-                float costX = bx + 10 * scaleX;
-                float costY = by + bh - 20 * scaleY;
+                float digitSize = 16.0f * buttonScale;
+                float costX = bx + 10 * buttonScale;
+                float costY = by + bh - 20 * buttonScale;
                 
                 // Draw bean icon
                 renderer.renderRectangle(
-                    {costX, costY, 10.0f * scaleY, 10.0f * scaleY},
+                    {costX, costY, 10.0f * buttonScale, 10.0f * buttonScale},
                     {0.6f, 0.4f, 0.2f, 1.0f}
                 );
                 
                 // Draw digits for cost with increased spacing
                 for (size_t i = 0; i < costStr.length(); i++) {
-                    drawDigit(renderer, costStr[i] - '0', costX + 15 * scaleX + i * (digitSize * 1.2f), costY - 5 * scaleY, digitSize);
+                    drawDigit(renderer, costStr[i] - '0', costX + 15 * buttonScale + i * (digitSize * 1.2f), costY - 5 * buttonScale, digitSize);
                 }
                 
                 // Draw tower count indicator
@@ -2174,18 +2170,18 @@ int main()
                 
                 if (towerCount > 0) {
                     std::string countStr = "x" + std::to_string(towerCount);
-                    float countX = bx + bw - 30 * scaleX;
-                    float countY = by + 15 * scaleY;
+                    float countX = bx + bw - 30 * buttonScale;
+                    float countY = by + 15 * buttonScale;
                     
                     renderer.renderRectangle(
-                        {countX - 5 * scaleX, countY - 5 * scaleY, 30 * scaleX, 20 * scaleY},
+                        {countX - 5 * buttonScale, countY - 5 * buttonScale, 30 * buttonScale, 20 * buttonScale},
                         {0.0f, 0.0f, 0.0f, 0.5f}
                     );
                     
-                    float smallDigitSize = 14.0f * scaleY;
+                    float smallDigitSize = 14.0f * buttonScale;
                     for (size_t i = 0; i < countStr.length(); i++) {
                         if (countStr[i] == 'x') continue;
-                        drawDigit(renderer, countStr[i] - '0', countX + 10 * scaleX + (i-1) * (smallDigitSize * 0.8f), countY, smallDigitSize);
+                        drawDigit(renderer, countStr[i] - '0', countX + 10 * buttonScale + (i-1) * (smallDigitSize * 0.8f), countY, smallDigitSize);
                     }
                 }
             }
@@ -2422,105 +2418,112 @@ for (const auto& tower : towers) {
                 
                 switch (enemy.type) {
                     case EnemyType::BOSS:
-                        enemySize = BOSS_SIZE;
-                        // Use boss texture if available, fall back to colored rectangle if not
+                        enemySize = BOSS_SIZE * ((scaleX + scaleY) / 2.0f);
+                        break;
+                    case EnemyType::TANK:
+                        enemySize = TANK_SIZE * ((scaleX + scaleY) / 2.0f);
+                        break;
+                    case EnemyType::GHOST:
+                        enemySize = GHOST_SIZE * ((scaleX + scaleY) / 2.0f);
+                        break;
+                    case EnemyType::SKELETON:
+                        enemySize = ENEMY_SIZE * ((scaleX + scaleY) / 2.0f);
+                        break;
+                    case EnemyType::ZOMBIE:
+                    default:
+                        enemySize = ENEMY_SIZE * ((scaleX + scaleY) / 2.0f);
+                        break;
+                }
+
+                // Draw enemy
+                Point pos = enemy.getPosition(scaledWaypoints);
+                switch (enemy.type) {
+                    case EnemyType::BOSS:
                         if (bossTexture.id != 0) {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 bossTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1}
                             );
                         } else {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a}
                             );
                         }
                         break;
-                        
                     case EnemyType::TANK:
-                        enemySize = TANK_SIZE;
-                        // Use tank texture if available, fall back to colored rectangle if not
                         if (tankTexture.id != 0) {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 tankTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1}
                             );
                         } else {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a}
                             );
                         }
                         break;
-                        
                     case EnemyType::GHOST:
-                        enemySize = GHOST_SIZE;
-                        // Use ghost texture if available, fall back to colored rectangle if not
                         if (ghostTexture.id != 0) {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 ghostTexture, {1.0f, 1.0f, 1.0f, enemyColor.a}, {0, 0}, 0, {0, 0, 1, 1}
                             );
                         } else {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a}
                             );
                         }
                         break;
-                        
                     case EnemyType::SKELETON:
-                        enemySize = ENEMY_SIZE;
-                        // Use skeleton texture if available, fall back to colored rectangle if not
                         if (skeletonTexture.id != 0) {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 skeletonTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1}
                             );
                         } else {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a}
                             );
                         }
                         break;
-                        
                     case EnemyType::ZOMBIE:
                     default:
-                        enemySize = ENEMY_SIZE;
-                        // Use zombie texture if available, fall back to colored rectangle if not
                         if (zombieTexture.id != 0) {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 zombieTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1}
                             );
                         } else {
                             renderer.renderRectangle(
-                                {enemy.pos.x - enemySize/2, enemy.pos.y - enemySize/2, enemySize, enemySize},
+                                {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
                                 {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a}
                             );
                         }
                         break;
                 }
-                
+
                 // Draw health bar background
                 float healthBarWidth = enemySize;
-                float healthBarHeight = 6.0f;
+                float healthBarHeight = 6.0f * ((scaleX + scaleY) / 2.0f);
                 renderer.renderRectangle(
-                    {enemy.pos.x - healthBarWidth/2, enemy.pos.y - enemySize/2 - 10.0f, 
+                    {pos.x - healthBarWidth/2, pos.y - enemySize/2 - 10.0f * ((scaleX + scaleY) / 2.0f), 
                      healthBarWidth, healthBarHeight},
                     {0.2f, 0.2f, 0.2f, 0.8f}
                 );
-                
+
                 // Draw health bar fill
                 float healthPercent = enemy.health / enemy.maxHealth;
                 float healthBarFillWidth = healthBarWidth * healthPercent;
-                
+
                 // Color the health bar from red (low health) to green (full health)
                 Color healthColor = {1.0f - healthPercent, healthPercent, 0.0f, 1.0f};
-                
+
                 renderer.renderRectangle(
-                    {enemy.pos.x - healthBarWidth/2, enemy.pos.y - enemySize/2 - 10.0f, 
+                    {pos.x - healthBarWidth/2, pos.y - enemySize/2 - 10.0f * ((scaleX + scaleY) / 2.0f), 
                      healthBarFillWidth, healthBarHeight},
                     {healthColor.r, healthColor.g, healthColor.b, healthColor.a}
                 );
