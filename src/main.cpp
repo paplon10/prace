@@ -76,7 +76,6 @@ float enemySpawnTimer = 0.0f;
 // Game state variables
 bool isGameOver = false;
 int lives = 3;  // Number of enemies that can exit before game over
-bool isPaused = false;  // Track if game is paused
 
 // Global variable for tracking when mouse was just pressed
 bool mouseJustPressed = false;
@@ -554,8 +553,16 @@ void processInput(GLFWwindow *window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
     {
-        glfwSetWindowShouldClose(window, true);
-        std::cout << "Closing game..." << std::endl;
+        // Handle ESC key based on current screen
+        if (currentScreen == GameScreen::GAME) {
+            currentScreen = GameScreen::PAUSE_MENU;
+        } else if (currentScreen == GameScreen::MAP_SELECT) {
+            currentScreen = GameScreen::MAIN_MENU;
+        } else if (currentScreen == GameScreen::OPTIONS) {
+            currentScreen = GameScreen::MAIN_MENU;
+        } else if (currentScreen == GameScreen::PAUSE_MENU) {
+            currentScreen = GameScreen::GAME;
+        }
     }
     
     // Get mouse position
@@ -566,32 +573,31 @@ void processInput(GLFWwindow *window)
         mouseLeftPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     }
     
-    // Pause handling
-    static bool pKeyPressed = false;
-    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS && !pKeyPressed) {
-        isPaused = !isPaused;
-        pKeyPressed = true;
-        if (isPaused) {
-            std::cout << "Game PAUSED. Press any key to resume." << std::endl;
-        } else {
-            std::cout << "Game RESUMED." << std::endl;
-        }
-    }
-    else if (glfwGetKey(window, GLFW_KEY_P) == GLFW_RELEASE) {
-        pKeyPressed = false;
-    }
+    // Remove the old pause system since we're using the pause menu now
+    // static bool pKeyPressed = false;
+    // if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS && !pKeyPressed) {
+    //     isPaused = !isPaused;
+    //     pKeyPressed = true;
+    //     if (isPaused) {
+    //         std::cout << "Game PAUSED. Press any key to resume." << std::endl;
+    //     } else {
+    //         std::cout << "Game RESUMED." << std::endl;
+    //     }
+    // }
+    // else if (glfwGetKey(window, GLFW_KEY_P) == GLFW_RELEASE) {
+    //     pKeyPressed = false;
+    // }
     
-    // If game is paused, check for any key press to unpause
-    if (isPaused) {
-        // Check for any key press except P (which is handled above)
-        for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; key++) {
-            if (key != GLFW_KEY_P && key != GLFW_KEY_ESCAPE && glfwGetKey(window, key) == GLFW_PRESS) {
-                isPaused = false;
-                std::cout << "Game RESUMED." << std::endl;
-                break;
-            }
-        }
-    }
+    // Remove the old pause handling since we're using the pause menu now
+    // if (isPaused) {
+    //     for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; key++) {
+    //         if (key != GLFW_KEY_P && key != GLFW_KEY_ESCAPE && glfwGetKey(window, key) == GLFW_PRESS) {
+    //             isPaused = false;
+    //             std::cout << "Game RESUMED." << std::endl;
+    //             break;
+    //         }
+    //     }
+    // }
     
     // Tower type selection
     static bool key1Pressed = false;
@@ -601,8 +607,8 @@ void processInput(GLFWwindow *window)
     static bool key5Pressed = false;
     static bool key6Pressed = false;
     
-    // Only allow tower selection via keyboard if the tower menu is closed
-    if (!towerMenu.isOpen) {
+    // Only allow tower selection via keyboard if the tower menu is closed and we're in the game
+    if (!towerMenu.isOpen && currentScreen == GameScreen::GAME) {
         if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS && !key1Pressed) {
             placementTower.setType(TowerType::APPLE);
             std::cout << "Selected Apple Tower" << std::endl;
@@ -657,7 +663,7 @@ void processInput(GLFWwindow *window)
             key6Pressed = false;
         }
     } else {
-        // Still need to track key releases even if tower menu is open
+        // Still need to track key releases even if tower menu is open or not in game
         if (glfwGetKey(window, GLFW_KEY_1) == GLFW_RELEASE) key1Pressed = false;
         if (glfwGetKey(window, GLFW_KEY_2) == GLFW_RELEASE) key2Pressed = false;
         if (glfwGetKey(window, GLFW_KEY_3) == GLFW_RELEASE) key3Pressed = false;
@@ -1316,24 +1322,54 @@ void loadAlphabetTextures() {
     }
 }
 
-void drawText(gl2d::Renderer2D& renderer, const std::string& text, float x, float y, float size, float spacing = 2.0f) {
+void drawText(gl2d::Renderer2D& renderer, const std::string& text, float x, float y, float size, float spacing = 2.0f, float scale = 1.0f) {
+    float scaledSize = size * scale;
+    float scaledSpacing = spacing * scale;
     float cursorX = x;
     for (char c : text) {
         if (c == ' ') {
-            cursorX += size * 0.6f; // Space width
+            cursorX += scaledSize * 0.6f; // Space width
             continue;
         }
         char upper = std::toupper(static_cast<unsigned char>(c));
         auto it = alphabetTextures.find(upper);
         if (it != alphabetTextures.end() && it->second.id != 0) {
             renderer.renderRectangle(
-                {cursorX, y, size, size},
+                {cursorX, y, scaledSize, scaledSize},
                 it->second, {1, 1, 1, 1}
             );
         }
-        cursorX += size + spacing;
+        cursorX += scaledSize + scaledSpacing;
     }
 }
+
+// Add enum for map selection
+enum class MapType {
+    GRASS,
+    DESERT,
+    PLACEHOLDER
+};
+MapType selectedMap = MapType::GRASS;
+
+// Add game state enum for menu and game
+enum class GameScreen {
+    MAIN_MENU,
+    MAP_SELECT,
+    GAME,
+    OPTIONS,
+    PAUSE_MENU
+};
+GameScreen currentScreen = GameScreen::MAIN_MENU;
+
+// Add menu button rectangles
+Rectangle playButton;
+Rectangle optionsButton;
+Rectangle exitButton;
+
+// ... inside main() after loading background textures ...
+    // Placeholder: use a solid color for now
+    gl2d::Texture placeholderTexture;
+// ... existing code ...
 
 int main()
 {
@@ -1491,7 +1527,6 @@ int main()
     }
     std::cout << "Heart texture ID: " << heartTexture.id << std::endl;
 
-
     // Initialize enemies
     std::vector<Enemy> enemies(MAX_ENEMIES);
     
@@ -1517,6 +1552,14 @@ int main()
         TowerButton(GAME_WIDTH + 20, 400, 160, 60, TowerType::CACTUS)
     };
 
+    // Menu and map selection button rectangles
+    Rectangle playButton(WIDTH/2 - 100, HEIGHT/2 - 80, 200, 60);
+    Rectangle optionsButton(WIDTH/2 - 100, HEIGHT/2, 200, 60);
+    Rectangle exitButton(WIDTH/2 - 100, HEIGHT/2 + 80, 200, 60);
+    Rectangle map1Button(WIDTH/2 - 320, HEIGHT/2 - 100, 180, 180);
+    Rectangle map2Button(WIDTH/2 - 90, HEIGHT/2 - 100, 180, 180);
+    Rectangle map3Button(WIDTH/2 + 140, HEIGHT/2 - 100, 180, 180);
+
     // Main game loop
     float lastTime = (float)glfwGetTime();
     while (!glfwWindowShouldClose(window))
@@ -1535,31 +1578,305 @@ int main()
         float scaleX = (float)w / (float)WIDTH;
         float scaleY = (float)h / (float)HEIGHT;
 
-        // Update tower button positions and sizes based on window size
-        float buttonScale = std::min(scaleX, scaleY); // Use minimum to maintain aspect ratio
-        float panelWidth = PANEL_WIDTH * scaleX;
-        float buttonWidth = std::min(160.0f * buttonScale, panelWidth * 0.8f); // Max 80% of panel width
-        float buttonHeight = 60.0f * buttonScale;
-        float buttonSpacing = 70.0f * buttonScale;
-        float startY = 50.0f * buttonScale;
-        
-        std::vector<TowerButton> towerButtons = {
-            TowerButton((GAME_WIDTH + 20) * scaleX, startY, buttonWidth, buttonHeight, TowerType::APPLE),
-            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing, buttonWidth, buttonHeight, TowerType::CARROT),
-            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing * 2, buttonWidth, buttonHeight, TowerType::POTATO),
-            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing * 3, buttonWidth, buttonHeight, TowerType::PINEAPPLE),
-            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing * 4, buttonWidth, buttonHeight, TowerType::BANANA_PEEL),
-            TowerButton((GAME_WIDTH + 20) * scaleX, startY + buttonSpacing * 5, buttonWidth, buttonHeight, TowerType::CACTUS)
-        };
-
-        // Get scaled waypoints for this frame
+        float buttonScale = std::min(scaleX, scaleY);
         auto scaledWaypoints = getScaledWaypoints(scaleX, scaleY);
+
+        // Update menu button rectangles for scaling
+        Rectangle scaledPlayButton = playButton;
+        Rectangle scaledOptionsButton = optionsButton;
+        Rectangle scaledExitButton = exitButton;
+        scaledPlayButton.x *= scaleX; scaledPlayButton.y *= scaleY;
+        scaledPlayButton.w *= scaleX; scaledPlayButton.h *= scaleY;
+        scaledOptionsButton.x *= scaleX; scaledOptionsButton.y *= scaleY;
+        scaledOptionsButton.w *= scaleX; scaledOptionsButton.h *= scaleY;
+        scaledExitButton.x *= scaleX; scaledExitButton.y *= scaleY;
+        scaledExitButton.w *= scaleX; scaledExitButton.h *= scaleY;
 
         // Handle input
         processInput(window);
 
-        // Only update game elements if not paused and not game over
-        if (!isPaused && !isGameOver) {
+        // MAIN MENU SCREEN
+        if (currentScreen == GameScreen::MAIN_MENU) {
+            renderer.clearScreen({0.1, 0.2, 0.6, 1});
+            // Draw title with dynamic scaling
+            std::string title = "TOWER DEFENSE";
+            float titleSize = 64.0f * scaleY;
+            float titleWidth = title.length() * (titleSize + 2.0f);
+            float titleX = (w - titleWidth) / 2.0f;
+            float titleY = 80 * scaleY;
+            drawText(renderer, title, titleX, titleY, titleSize, 2.0f, 1.0f);
+            // Draw buttons
+            auto drawMenuButton = [&](const Rectangle& rect, const char* label, bool hovered) {
+                Color color = hovered ? Color(0.3f, 0.5f, 0.3f, 1.0f) : Color(0.2f, 0.2f, 0.2f, 1.0f);
+                renderer.renderRectangle({rect.x, rect.y, rect.w, rect.h}, {color.r, color.g, color.b, color.a});
+                float textSize = 32.0f * scaleY;
+                float textX = rect.x + (rect.w - strlen(label) * textSize * 0.7f) / 2.0f;
+                float textY = rect.y + (rect.h - textSize) / 2.0f;
+                drawText(renderer, label, textX, textY, textSize, 2.0f, 1.0f);
+            };
+            bool playHovered = isPointInRect((float)mouseX, (float)mouseY, scaledPlayButton);
+            bool optionsHovered = isPointInRect((float)mouseX, (float)mouseY, scaledOptionsButton);
+            bool exitHovered = isPointInRect((float)mouseX, (float)mouseY, scaledExitButton);
+            drawMenuButton(scaledPlayButton, "PLAY", playHovered);
+            drawMenuButton(scaledOptionsButton, "OPTIONS", optionsHovered);
+            drawMenuButton(scaledExitButton, "EXIT", exitHovered);
+            renderer.flush();
+            // Handle button clicks
+            if (mouseJustPressed) {
+                if (playHovered) {
+                    currentScreen = GameScreen::MAP_SELECT;
+                } else if (optionsHovered) {
+                    currentScreen = GameScreen::OPTIONS;
+                } else if (exitHovered) {
+                    glfwSetWindowShouldClose(window, true);
+                }
+                mouseJustPressed = false;
+            }
+            // Poll events and skip game logic
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            continue;
+        }
+        // MAP SELECTION SCREEN
+        if (currentScreen == GameScreen::MAP_SELECT) {
+            renderer.clearScreen({0.1, 0.2, 0.6, 1});
+            std::string selectText = "SELECT MAP";
+            float selectSize = 48.0f * scaleY;
+            float selectX = (w - selectText.length() * (selectSize + 2.0f)) / 2.0f;
+            float selectY = 60 * scaleY;
+            drawText(renderer, selectText, selectX, selectY, selectSize, 2.0f, 1.0f);
+            // Scale map buttons
+            Rectangle scaledMap1 = map1Button, scaledMap2 = map2Button, scaledMap3 = map3Button;
+            scaledMap1.x *= scaleX; scaledMap1.y *= scaleY; scaledMap1.w *= scaleX; scaledMap1.h *= scaleY;
+            scaledMap2.x *= scaleX; scaledMap2.y *= scaleY; scaledMap2.w *= scaleX; scaledMap2.h *= scaleY;
+            scaledMap3.x *= scaleX; scaledMap3.y *= scaleY; scaledMap3.w *= scaleX; scaledMap3.h *= scaleY;
+            // Draw map preview buttons
+            bool map1Hovered = isPointInRect((float)mouseX, (float)mouseY, scaledMap1);
+            bool map2Hovered = isPointInRect((float)mouseX, (float)mouseY, scaledMap2);
+            bool map3Hovered = isPointInRect((float)mouseX, (float)mouseY, scaledMap3);
+            renderer.renderRectangle({scaledMap1.x, scaledMap1.y, scaledMap1.w, scaledMap1.h}, backgroundTexture, {1, 1, 1, map1Hovered ? 1.0f : 0.8f});
+            renderer.renderRectangle({scaledMap2.x, scaledMap2.y, scaledMap2.w, scaledMap2.h}, placeholderTexture, {1, 1, 1, map2Hovered ? 1.0f : 0.8f});
+            renderer.renderRectangle({scaledMap3.x, scaledMap3.y, scaledMap3.w, scaledMap3.h}, {0.5f, 0.5f, 0.5f, map3Hovered ? 1.0f : 0.8f});
+            // Draw map labels with dynamic scaling
+            float labelSize = 24.0f * scaleY;
+            drawText(renderer, "GRASS", scaledMap1.x + 20 * scaleX, scaledMap1.y + scaledMap1.h + 10 * scaleY, labelSize, 2.0f, 1.0f);
+            drawText(renderer, "DESERT", scaledMap2.x + 20 * scaleX, scaledMap2.y + scaledMap2.h + 10 * scaleY, labelSize, 2.0f, 1.0f);
+            drawText(renderer, "???", scaledMap3.x + 60 * scaleX, scaledMap3.y + scaledMap3.h + 10 * scaleY, labelSize, 2.0f, 1.0f);
+            renderer.flush();
+            // Handle map selection
+            if (mouseJustPressed) {
+                if (map1Hovered) {
+                    selectedMap = MapType::GRASS;
+                    currentScreen = GameScreen::GAME;
+                } else if (map2Hovered) {
+                    selectedMap = MapType::DESERT;
+                    currentScreen = GameScreen::GAME;
+                } else if (map3Hovered) {
+                    selectedMap = MapType::PLACEHOLDER;
+                    currentScreen = GameScreen::GAME;
+                }
+                mouseJustPressed = false;
+            }
+            // Back to main menu on ESC
+            if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+                currentScreen = GameScreen::MAIN_MENU;
+            }
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            continue;
+        }
+        // OPTIONS SCREEN (placeholder)
+        if (currentScreen == GameScreen::OPTIONS) {
+            renderer.clearScreen({0.1, 0.2, 0.6, 1});
+            std::string opt = "OPTIONS (not implemented)";
+            float optSize = 40.0f * scaleY;
+            float optX = (w - opt.length() * (optSize + 2.0f)) / 2.0f;
+            float optY = 200 * scaleY;
+            drawText(renderer, opt, optX, optY, optSize, 2.0f, 1.0f);
+            std::string back = "BACK";
+            Rectangle backBtn(WIDTH/2 - 80, HEIGHT - 120, 160, 50);
+            backBtn.x *= scaleX; backBtn.y *= scaleY; backBtn.w *= scaleX; backBtn.h *= scaleY;
+            bool backHovered = isPointInRect((float)mouseX, (float)mouseY, backBtn);
+            renderer.renderRectangle({backBtn.x, backBtn.y, backBtn.w, backBtn.h}, {0.2f, 0.2f, 0.2f, 1.0f});
+            float backSize = 28.0f * scaleY;
+            float backX = backBtn.x + (backBtn.w - back.length() * backSize * 0.7f) / 2.0f;
+            float backY = backBtn.y + (backBtn.h - backSize) / 2.0f;
+            drawText(renderer, back, backX, backY, backSize, 2.0f, 1.0f);
+            renderer.flush();
+            if (mouseJustPressed && backHovered) {
+                currentScreen = GameScreen::MAIN_MENU;
+                mouseJustPressed = false;
+            }
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            continue;
+        }
+        
+        // PAUSE MENU SCREEN
+        if (currentScreen == GameScreen::PAUSE_MENU) {
+            // Draw the game in the background (frozen)
+            renderer.clearScreen({0.1, 0.2, 0.6, 1});
+            
+            // Draw background
+            renderer.renderRectangle({0 * scaleX, 0 * scaleY, GAME_WIDTH * scaleX, HEIGHT * scaleY}, backgroundTexture, {1, 1, 1, 1});
+            
+            // Draw UI panel background
+            renderer.renderRectangle(
+                {(float)GAME_WIDTH * scaleX, 0 * scaleY, (float)PANEL_WIDTH * scaleX, (float)HEIGHT * scaleY},
+                {UI_BACKGROUND.r, UI_BACKGROUND.g, UI_BACKGROUND.b, UI_BACKGROUND.a}
+            );
+            
+            // Draw bean count
+            drawNumber(renderer, beanCount, (GAME_WIDTH - 180) * scaleX, 15 * scaleY, 32.0f * scaleY);
+            
+            // Draw round information
+            float roundTextX = 70 * scaleX;
+            float roundTextY = 15 * scaleY;
+            float roundDigitSize = 24.0f * scaleY;
+            float rSize = 30.0f * scaleY;
+            float rX = roundTextX - 50 * scaleX;
+            float rY = roundTextY;
+            drawText(renderer, "R", rX, rY, rSize);
+            std::string roundStr = std::to_string(currentRound);
+            float bgWidth = roundDigitSize * 1.2f * roundStr.length() + 20 * scaleX;
+            renderer.renderRectangle(
+                {roundTextX - 5 * scaleX, roundTextY - 5 * scaleY, bgWidth, roundDigitSize + 10 * scaleY},
+                {0.0f, 0.0f, 0.0f, 0.5f}
+            );
+            for (size_t i = 0; i < roundStr.length(); i++) {
+                drawDigit(renderer, roundStr[i] - '0', roundTextX + i * (roundDigitSize * 1.2f), roundTextY, roundDigitSize);
+            }
+            
+            // Draw lives
+            float livesX = 200 * scaleX;
+            float livesY = 15 * scaleY;
+            for (int i = 0; i < lives; i++) {
+                renderer.renderRectangle(
+                    {livesX + i * 30 * scaleX, livesY, 20 * scaleX, 20 * scaleY * (scaleY * 0.9f)},
+                    heartTexture, {1.0f, 1.0f, 1.0f, 1.0f}
+                );
+            }
+            
+            // Draw towers (frozen)
+            for (const auto& tower : towers) {
+                Color towerColor = getTowerColor(tower.type);
+                if (tower.type == TowerType::CACTUS) {
+                    renderCactus(renderer, tower);
+                } else if (tower.type == TowerType::CARROT) {
+                    if (carrotTowerTexture.id != 0) {
+                        renderer.renderRectangle(
+                            {tower.pos.x - TOWER_SIZE/2, tower.pos.y - TOWER_SIZE/2, TOWER_SIZE, TOWER_SIZE},
+                            carrotTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f}
+                        );
+                    } else {
+                        renderer.renderRectangle(
+                            {tower.pos.x - TOWER_SIZE/2, tower.pos.y - TOWER_SIZE/2, TOWER_SIZE, TOWER_SIZE},
+                            {towerColor.r, towerColor.g, towerColor.b, towerColor.a}
+                        );
+                    }
+                } else {
+                    renderer.renderRectangle(
+                        {tower.pos.x - TOWER_SIZE/2, tower.pos.y - TOWER_SIZE/2, TOWER_SIZE, TOWER_SIZE},
+                        {towerColor.r, towerColor.g, towerColor.b, towerColor.a}
+                    );
+                }
+            }
+            
+            // Draw enemies (frozen)
+            for (const auto& enemy : enemies) {
+                if (enemy.isActive) {
+                    Color enemyColor = getEnemyColor(enemy.type);
+                    float enemySize = 0.0f;
+                    switch (enemy.type) {
+                        case EnemyType::BOSS: enemySize = BOSS_SIZE * ((scaleX + scaleY) / 2.0f); break;
+                        case EnemyType::TANK: enemySize = TANK_SIZE * ((scaleX + scaleY) / 2.0f); break;
+                        case EnemyType::GHOST: enemySize = GHOST_SIZE * ((scaleX + scaleY) / 2.0f); break;
+                        default: enemySize = ENEMY_SIZE * ((scaleX + scaleY) / 2.0f); break;
+                    }
+                    Point pos = enemy.getPosition(scaledWaypoints);
+                    renderer.renderRectangle(
+                        {pos.x - enemySize/2, pos.y - enemySize/2, enemySize, enemySize},
+                        {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a}
+                    );
+                }
+            }
+            
+            // Draw projectiles (frozen)
+            for (const auto& proj : projectiles) {
+                if (proj.active) {
+                    float halfSize = PROJECTILE_SIZE / 2.0f;
+                    renderer.renderRectangle(
+                        {proj.pos.x - halfSize, proj.pos.y - halfSize, PROJECTILE_SIZE, PROJECTILE_SIZE},
+                        {0.0f, 0.0f, 0.0f, 1.0f}
+                    );
+                }
+            }
+            
+            // Draw semi-transparent overlay
+            renderer.renderRectangle(
+                {0, 0, (float)w, (float)h},
+                {0.0f, 0.0f, 0.0f, 0.5f}
+            );
+            
+            // Draw pause menu title
+            std::string pauseTitle = "PAUSED";
+            float titleSize = 48.0f * scaleY;
+            float titleWidth = pauseTitle.length() * (titleSize + 2.0f);
+            float titleX = (w - titleWidth) / 2.0f;
+            float titleY = 150 * scaleY;
+            drawText(renderer, pauseTitle, titleX, titleY, titleSize, 2.0f, 1.0f);
+            
+            // Create pause menu buttons
+            Rectangle resumeBtn(WIDTH/2 - 100, HEIGHT/2 - 80, 200, 60);
+            Rectangle optionsBtn(WIDTH/2 - 100, HEIGHT/2, 200, 60);
+            Rectangle mainMenuBtn(WIDTH/2 - 100, HEIGHT/2 + 80, 200, 60);
+            
+            // Scale buttons
+            resumeBtn.x *= scaleX; resumeBtn.y *= scaleY; resumeBtn.w *= scaleX; resumeBtn.h *= scaleY;
+            optionsBtn.x *= scaleX; optionsBtn.y *= scaleY; optionsBtn.w *= scaleX; optionsBtn.h *= scaleY;
+            mainMenuBtn.x *= scaleX; mainMenuBtn.y *= scaleY; mainMenuBtn.w *= scaleX; mainMenuBtn.h *= scaleY;
+            
+            // Check hover states
+            bool resumeHovered = isPointInRect((float)mouseX, (float)mouseY, resumeBtn);
+            bool optionsHovered = isPointInRect((float)mouseX, (float)mouseY, optionsBtn);
+            bool mainMenuHovered = isPointInRect((float)mouseX, (float)mouseY, mainMenuBtn);
+            
+            // Draw buttons
+            auto drawPauseButton = [&](const Rectangle& rect, const char* label, bool hovered) {
+                Color color = hovered ? Color(0.3f, 0.5f, 0.3f, 1.0f) : Color(0.2f, 0.2f, 0.2f, 1.0f);
+                renderer.renderRectangle({rect.x, rect.y, rect.w, rect.h}, {color.r, color.g, color.b, color.a});
+                float textSize = 28.0f * scaleY;
+                float textX = rect.x + (rect.w - strlen(label) * textSize * 0.7f) / 2.0f;
+                float textY = rect.y + (rect.h - textSize) / 2.0f;
+                drawText(renderer, label, textX, textY, textSize, 2.0f, 1.0f);
+            };
+            
+            drawPauseButton(resumeBtn, "RESUME", resumeHovered);
+            drawPauseButton(optionsBtn, "OPTIONS", optionsHovered);
+            drawPauseButton(mainMenuBtn, "MAIN MENU", mainMenuHovered);
+            
+            renderer.flush();
+            
+            // Handle button clicks
+            if (mouseJustPressed) {
+                if (resumeHovered) {
+                    currentScreen = GameScreen::GAME;
+                } else if (optionsHovered) {
+                    currentScreen = GameScreen::OPTIONS;
+                } else if (mainMenuHovered) {
+                    currentScreen = GameScreen::MAIN_MENU;
+                }
+                mouseJustPressed = false;
+            }
+            
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            continue;
+        }
+        // ... existing code ...
+
+        // Only update game elements if we're in the game screen
+        if (currentScreen == GameScreen::GAME && !isGameOver) {
             // Update placement tower position
             placementTower.pos = Point((float)mouseX, (float)mouseY);
             
@@ -1944,7 +2261,7 @@ int main()
         }
 
         // Update tower button hover states
-        if (!isPaused) {
+        if (!isGameOver) {
             for (auto& button : towerButtons) {
                 button.isHovered = isPointInRect((float)mouseX, (float)mouseY, button.rect);
                 if (button.isHovered && mouseLeftPressed && !towerMenu.isOpen) {  // Only allow tower selection if menu is not open
@@ -2021,14 +2338,14 @@ int main()
                 {0.0f, 0.0f, 0.0f, 0.7f}
             );
             
-            // Show 'YOU LOST' centered
+            // Show 'YOU LOST' centered with dynamic scaling
             std::string lostText = "YOU LOST";
             float textSize = 64.0f * scaleY;
             float textWidth = (lostText.length() * (textSize + 2.0f));
             float x = (w - textWidth) / 2.0f;
             float y = (h / 2.0f) - (textSize / 2.0f);
             renderer.renderRectangle({x - 30, y - 30, textWidth + 60, textSize + 60}, {0, 0, 0, 0.8f});
-            drawText(renderer, lostText, x, y, textSize);
+            drawText(renderer, lostText, x, y, textSize, 2.0f, 1.0f);
             
             // Check for click to restart - use mouseJustPressed instead of mouseLeftPressed
             if (mouseJustPressed) {
@@ -2037,33 +2354,8 @@ int main()
             }
         }
         
-        // If game is paused, show pause screen
-        if (isPaused) {
-            // Overlay with semi-transparent black
-            renderer.renderRectangle(
-                {0, 0, (float)w, (float)h},
-                {0.0f, 0.0f, 0.0f, 0.5f}  // Less dark than game over screen
-            );
-            
-            // Show 'PAUSED' centered
-            std::string pauseText = "PAUSED";
-            float textSize = 64.0f * scaleY;
-            float textWidth = (pauseText.length() * (textSize + 2.0f));
-            float x = (w - textWidth) / 2.0f;
-            float y = (h / 2.0f) - (textSize / 2.0f);
-            renderer.renderRectangle({x - 30, y - 30, textWidth + 60, textSize + 60}, {0, 0, 0, 0.8f});
-            drawText(renderer, pauseText, x, y, textSize);
-            
-            // Draw "Press any key to continue" message
-            float continueY = y + textSize + 40 * scaleY;
-            renderer.renderRectangle(
-                {w / 2 - 150 * scaleX, continueY, 300 * scaleX, 5 * scaleY},
-                {1.0f, 1.0f, 1.0f, 1.0f}
-            );
-        }
-        
         // If we're between rounds, show countdown
-        if (!isRoundActive && !isGameOver) {
+        if (!isRoundActive && !isGameOver && currentScreen == GameScreen::GAME) {
             int countdown = (int)roundStartTimer + 1;
             std::string countdownStr = std::to_string(countdown);
             float countdownX = w / 2 - 30 * scaleX;
@@ -2080,7 +2372,7 @@ int main()
                 drawDigit(renderer, countdownStr[i] - '0', countdownX + i * (countdownSize * 0.8f), countdownY, countdownSize);
             }
             
-            // Draw "NEXT ROUND" text using rectangles
+            // Draw "NEXT ROUND" text using rectangles with dynamic scaling
             float textY = countdownY + countdownSize + 20 * scaleY;
             renderer.renderRectangle({w / 2 - 100 * scaleX, textY, 200 * scaleX, 5 * scaleY}, {1.0f, 1.0f, 1.0f, 1.0f});
         }
