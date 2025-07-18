@@ -87,6 +87,9 @@ bool mouseJustPressed = false;
 // Add after game state variables
 float gameStartTimer = 2.0f; // Show 'GAME START' for 2 seconds
 
+// Add after isGameOver
+bool isGameWon = false;
+
 // Tower struct
 struct Tower
 {
@@ -363,11 +366,21 @@ enum class GameScreen
 {
     MAIN_MENU,
     MAP_SELECT,
+    DIFFICULTY_SELECT, // New screen for difficulty selection
     GAME,
     OPTIONS,
     PAUSE_MENU
 };
 GameScreen currentScreen = GameScreen::MAIN_MENU;
+
+// Add difficulty enum and variable
+enum class Difficulty {
+    EASY,
+    MEDIUM,
+    HARD,
+    ENDLESS
+};
+Difficulty selectedDifficulty = Difficulty::EASY;
 
 // Function to get enemy name
 std::string getEnemyName(EnemyType type)
@@ -1272,6 +1285,26 @@ bool isRoundComplete(const std::vector<Enemy> &enemies)
     return true;
 }
 
+// Helper to get win round for current difficulty
+int getWinRoundForDifficulty(Difficulty diff) {
+    switch (diff) {
+        case Difficulty::EASY: return 10;
+        case Difficulty::MEDIUM: return 20;
+        case Difficulty::HARD: return 30;
+        case Difficulty::ENDLESS: default: return -1;
+    }
+}
+
+// Move the full definition of getStartingBeansForDifficulty here
+int getStartingBeansForDifficulty(Difficulty diff) {
+    switch (diff) {
+        case Difficulty::EASY: return 100;
+        case Difficulty::MEDIUM: return 69;
+        case Difficulty::HARD: return 40;
+        case Difficulty::ENDLESS: default: return 69;
+    }
+}
+
 // Function to reset the game state
 void resetGame(std::vector<Enemy> &enemies, std::vector<Tower> &towers, std::vector<Projectile> &projectiles, int &beanCount)
 {
@@ -1309,7 +1342,7 @@ void resetGame(std::vector<Enemy> &enemies, std::vector<Tower> &towers, std::vec
     lives = 3;
     
     // Reset beans
-    beanCount = 69;
+    beanCount = getStartingBeansForDifficulty(selectedDifficulty);
     
     std::cout << "Game reset! Starting new game..." << std::endl;
 }
@@ -1755,7 +1788,7 @@ int main()
     std::vector<Tower> towers;
 
     // Initialize bean counter
-    int beanCount = 69;
+    int beanCount = getStartingBeansForDifficulty(selectedDifficulty);
 
     // Initialize placement tower with no type selected
     placementTower.setType(TowerType::NONE);
@@ -1940,17 +1973,17 @@ int main()
                 if (map1Hovered)
                 {
                     selectedMap = MapType::GRASS;
-                    currentScreen = GameScreen::GAME;
+                    currentScreen = GameScreen::DIFFICULTY_SELECT;
                 }
                 else if (map2Hovered)
                 {
                     selectedMap = MapType::DESERT;
-                    currentScreen = GameScreen::GAME;
+                    currentScreen = GameScreen::DIFFICULTY_SELECT;
                 }
                 else if (map3Hovered)
                 {
                     selectedMap = MapType::PLACEHOLDER;
-                    currentScreen = GameScreen::GAME;
+                    currentScreen = GameScreen::DIFFICULTY_SELECT;
                 }
                 mouseJustPressed = false;
             }
@@ -1958,6 +1991,88 @@ int main()
             if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             {
                 currentScreen = GameScreen::MAIN_MENU;
+            }
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            continue;
+        }
+        // DIFFICULTY SELECTION SCREEN
+        if (currentScreen == GameScreen::DIFFICULTY_SELECT)
+        {
+            renderer.clearScreen({0.1, 0.2, 0.6, 1});
+            std::string diffText = "SELECT DIFFICULTY";
+            float diffSize = 48.0f * scaleY;
+            float diffX = (w - diffText.length() * (diffSize + 2.0f)) / 2.0f;
+            float diffY = 60 * scaleY;
+            drawText(renderer, diffText, diffX, diffY, diffSize, 2.0f, 1.0f);
+
+            // New layout: Easy, Medium, Hard side by side, Endless at the bottom
+            float btnW = 180 * scaleX;
+            float btnH = 70 * scaleY;
+            float spacing = 30 * scaleX;
+            float totalWidth = btnW * 3 + spacing * 2;
+            float centerX = w / 2.0f;
+            float btnY = HEIGHT * scaleY / 2.0f - btnH / 2.0f;
+            float startX = centerX - totalWidth / 2.0f;
+            Rectangle easyBtn(startX, btnY, btnW, btnH);
+            Rectangle mediumBtn(startX + btnW + spacing, btnY, btnW, btnH);
+            Rectangle hardBtn(startX + 2 * (btnW + spacing), btnY, btnW, btnH);
+            // Endless at the bottom
+            float endlessY = HEIGHT * scaleY - btnH - 60 * scaleY;
+            Rectangle endlessBtn(centerX - btnW / 2, endlessY, btnW, btnH);
+
+            // Hover logic
+            bool easyHovered = isPointInRect((float)mouseX, (float)mouseY, easyBtn);
+            bool mediumHovered = isPointInRect((float)mouseX, (float)mouseY, mediumBtn);
+            bool hardHovered = isPointInRect((float)mouseX, (float)mouseY, hardBtn);
+            bool endlessHovered = isPointInRect((float)mouseX, (float)mouseY, endlessBtn);
+
+            auto drawDiffBtn = [&](const Rectangle &rect, const char *label, bool hovered) {
+                Color color = hovered ? Color(0.3f, 0.5f, 0.3f, 1.0f) : Color(0.2f, 0.2f, 0.2f, 1.0f);
+                renderer.renderRectangle({rect.x, rect.y, rect.w, rect.h}, {color.r, color.g, color.b, color.a});
+                float textSize = 32.0f * scaleY;
+                float textX = rect.x + (rect.w - strlen(label) * textSize * 0.7f) / 2.0f;
+                float textY = rect.y + (rect.h - textSize) / 2.0f;
+                drawText(renderer, label, textX, textY, textSize, 2.0f, 1.0f);
+            };
+            drawDiffBtn(easyBtn, "EASY", easyHovered);
+            drawDiffBtn(mediumBtn, "MEDIUM", mediumHovered);
+            drawDiffBtn(hardBtn, "HARD", hardHovered);
+            drawDiffBtn(endlessBtn, "ENDLESS", endlessHovered);
+            renderer.flush();
+            // Handle selection
+            if (mouseJustPressed)
+            {
+                if (easyHovered)
+                {
+                    selectedDifficulty = Difficulty::EASY;
+                    beanCount = getStartingBeansForDifficulty(selectedDifficulty);
+                    currentScreen = GameScreen::GAME;
+                }
+                else if (mediumHovered)
+                {
+                    selectedDifficulty = Difficulty::MEDIUM;
+                    beanCount = getStartingBeansForDifficulty(selectedDifficulty);
+                    currentScreen = GameScreen::GAME;
+                }
+                else if (hardHovered)
+                {
+                    selectedDifficulty = Difficulty::HARD;
+                    beanCount = getStartingBeansForDifficulty(selectedDifficulty);
+                    currentScreen = GameScreen::GAME;
+                }
+                else if (endlessHovered)
+                {
+                    selectedDifficulty = Difficulty::ENDLESS;
+                    beanCount = getStartingBeansForDifficulty(selectedDifficulty);
+                    currentScreen = GameScreen::GAME;
+                }
+                mouseJustPressed = false;
+            }
+            // ESC to go back to map select
+            if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+            {
+                currentScreen = GameScreen::MAP_SELECT;
             }
             glfwSwapBuffers(window);
             glfwPollEvents();
@@ -2219,7 +2334,7 @@ int main()
         }
 
         // Only update game elements if we're in the game screen
-        if (currentScreen == GameScreen::GAME && !isGameOver)
+        if (currentScreen == GameScreen::GAME && !isGameOver && !isGameWon)
         {
             // Update placement tower position
             // Convert mouse position to game world coordinates for placement
@@ -2508,7 +2623,7 @@ int main()
             }
 
             // Handle round system
-            if (!isGameOver)
+            if (!isGameOver && !isGameWon)
             {
                 if (!isRoundActive)
                 {
@@ -2516,9 +2631,15 @@ int main()
                     roundStartTimer -= deltaTime;
                     if (roundStartTimer <= 0)
                     {
-                        startNewRound(enemies, currentRound);
-                        // Reset timer for next round - always 5 seconds
-                        roundStartTimer = 5.0f; // Standard 5 second break between all rounds
+                        // Check for win condition before starting new round
+                        int winRound = getWinRoundForDifficulty(selectedDifficulty);
+                        if (winRound > 0 && currentRound >= winRound) {
+                            isGameWon = true;
+                        } else {
+                            startNewRound(enemies, currentRound);
+                            // Reset timer for next round - always 5 seconds
+                            roundStartTimer = 5.0f; // Standard 5 second break between all rounds
+                        }
                     }
                 }
                 else
@@ -2805,7 +2926,6 @@ int main()
             renderer.renderRectangle(
                 {0, 0, (float)w, (float)h},
                 {0.0f, 0.0f, 0.0f, 0.7f});
-            
             // Show 'YOU LOST' centered with dynamic scaling
             std::string lostText = "YOU LOST";
             float textSize = 64.0f * scaleY;
@@ -2814,11 +2934,32 @@ int main()
             float y = (h / 2.0f) - (textSize / 2.0f);
             renderer.renderRectangle({x - 30, y - 30, textWidth + 60, textSize + 60}, {0, 0, 0, 0.8f});
             drawText(renderer, lostText, x, y, textSize, 2.0f, 1.0f);
-            
             // Check for click to restart - use mouseJustPressed instead of mouseLeftPressed
             if (mouseJustPressed)
             {
                 resetGame(enemies, towers, projectiles, beanCount);
+                isGameWon = false;
+                mouseJustPressed = false;
+            }
+        }
+        // If game is won, show win screen
+        if (isGameWon)
+        {
+            renderer.renderRectangle(
+                {0, 0, (float)w, (float)h},
+                {0.0f, 0.0f, 0.0f, 0.7f});
+            std::string winText = "YOU WIN!";
+            float textSize = 64.0f * scaleY;
+            float textWidth = (winText.length() * (textSize + 2.0f));
+            float x = (w - textWidth) / 2.0f;
+            float y = (h / 2.0f) - (textSize / 2.0f);
+            renderer.renderRectangle({x - 30, y - 30, textWidth + 60, textSize + 60}, {0, 0, 0, 0.8f});
+            drawText(renderer, winText, x, y, textSize, 2.0f, 1.0f);
+            // Click to restart
+            if (mouseJustPressed)
+            {
+                resetGame(enemies, towers, projectiles, beanCount);
+                isGameWon = false;
                 mouseJustPressed = false;
             }
         }
