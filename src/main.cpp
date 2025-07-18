@@ -888,6 +888,8 @@ bool canPlaceTower(const Point &center, float size, TowerType type, const std::v
     }
     if (type == TowerType::BANANA_PEEL || type == TowerType::CACTUS)
     {
+        // Must be ON the path (not just near it)
+        // We'll use a smaller threshold for more accuracy
         return isNearPath(center, waypoints, 20.0f);
     }
     float halfSize = size / 2.0f;
