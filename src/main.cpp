@@ -1565,6 +1565,10 @@ Rectangle exitButton;
 
 gl2d::Texture backgroundDesertTexture;
 
+inline float distance(float x1, float y1, float x2, float y2) {
+    return std::sqrt((x2 - x1)*(x2 - x1) + (y2 - y1)*(y2 - y1));
+}
+
 int main()
 {
     // Initialize GLFW
@@ -2955,11 +2959,12 @@ int main()
             float y = (h / 2.0f) - (textSize / 2.0f);
             renderer.renderRectangle({x - 30, y - 30, textWidth + 60, textSize + 60}, {0, 0, 0, 0.8f});
             drawText(renderer, winText, x, y, textSize, 2.0f, 1.0f);
-            // Click to restart
+            // Click to go to main menu
             if (mouseJustPressed)
             {
                 resetGame(enemies, towers, projectiles, beanCount);
                 isGameWon = false;
+                currentScreen = GameScreen::MAIN_MENU;
                 mouseJustPressed = false;
             }
         }
@@ -3710,22 +3715,46 @@ int main()
             }
         }
 
-        // Draw tower range indicators using rectangles
-        for (const auto &tower : towers)
+        // Draw tower range indicator as a white ring (edge only) when the upgrade menu is open for a tower
+        if (towerMenu.isOpen && towerMenu.selectedTower)
         {
-            float drawX = tower.pos.x * scaleX;
-            float drawY = tower.pos.y * scaleY;
-            float drawRangeX = tower.range * scaleX;
-            float drawRangeY = tower.range * scaleY;
-            // Draw a cross shape to indicate range
-            renderer.renderRectangle(
-                {drawX - drawRangeX, drawY - 2, drawRangeX * 2, 4},
-                {1.0f, 1.0f, 1.0f, 0.2f} // Semi-transparent white
-            );
-            renderer.renderRectangle(
-                {drawX - 2, drawY - drawRangeY, 4, drawRangeY * 2},
-                {1.0f, 1.0f, 1.0f, 0.2f} // Semi-transparent white
-            );
+            float drawX = towerMenu.selectedTower->pos.x * scaleX;
+            float drawY = towerMenu.selectedTower->pos.y * scaleY;
+            float drawRange = towerMenu.selectedTower->range * ((scaleX + scaleY) / 2.0f);
+            // Draw a white, semi-transparent ring for range
+            int segments = 64;
+            float angleStep = 2.0f * 3.1415926f / segments;
+            float ringThickness = 4.0f * ((scaleX + scaleY) / 2.0f); // Thin ring
+            for (int i = 0; i < segments; ++i)
+            {
+                float angle1 = i * angleStep;
+                float angle2 = (i + 1) * angleStep;
+                float x1_outer = drawX + cos(angle1) * drawRange;
+                float y1_outer = drawY + sin(angle1) * drawRange;
+                float x2_outer = drawX + cos(angle2) * drawRange;
+                float y2_outer = drawY + sin(angle2) * drawRange;
+                float x1_inner = drawX + cos(angle1) * (drawRange - ringThickness);
+                float y1_inner = drawY + sin(angle1) * (drawRange - ringThickness);
+                float x2_inner = drawX + cos(angle2) * (drawRange - ringThickness);
+                float y2_inner = drawY + sin(angle2) * (drawRange - ringThickness);
+                // Draw a thin quad segment for the ring
+                float midAngle = (angle1 + angle2) * 0.5f;
+                float mx = drawX + cos(midAngle) * (drawRange - ringThickness / 2.0f);
+                float my = drawY + sin(midAngle) * (drawRange - ringThickness / 2.0f);
+                float rectW = distance(x1_outer, y1_outer, x2_outer, y2_outer);
+                float rectH = ringThickness;
+
+                // Calculate rotation angle for the rectangle
+                float rotation = midAngle;
+
+                // Draw the rectangle centered at (mx, my), rotated by 'rotation'
+                renderer.renderRectangle(
+                    {mx - rectW / 2, my - rectH / 2, rectW, rectH},
+                    {1.0f, 1.0f, 1.0f, 0.45f},
+                    {0.5f, 0.5f}, // center
+                    rotation
+                );
+            }
         }
 
         // Flush renderer (draw everything)
