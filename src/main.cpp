@@ -90,6 +90,9 @@ float gameStartTimer = 2.0f; // Show 'GAME START' for 2 seconds
 // Add after isGameOver
 bool isGameWon = false;
 
+// Add persistent variable for desert map unlock
+bool desertMapUnlocked = false;
+
 // Tower struct
 struct Tower
 {
@@ -434,6 +437,19 @@ std::vector<Point> desertWaypoints = {
     Point(280, 130),
     Point(135, 130),
     Point(135, 640),
+};
+
+// For the snow map (from image, starting bottom right)
+std::vector<Point> snowWaypoints = {
+    Point(640, 545), // bottom right
+    Point(485, 545),
+    Point(485, 425),
+    Point(285, 425),
+    Point(285, 545),
+    Point(100, 545),
+    Point(100, 160),
+    Point(220, 160),
+    Point(220, 0) 
 };
 
 // Function to get scaled waypoints based on current scale
@@ -1435,6 +1451,12 @@ gl2d::Texture ghostTexture;
 // Add global texture for heart icon
 gl2d::Texture heartTexture;
 
+// Add global texture for lock icon
+gl2d::Texture lockTexture;
+
+// Add global texture for snow map background
+gl2d::Texture backgroundSnowTexture;
+
 // Function to create simple colored texture if it doesn't exist
 void createSimpleTexture(const std::string &filename, const Color &color)
 {
@@ -1550,7 +1572,7 @@ enum class MapType
 {
     GRASS,
     DESERT,
-    PLACEHOLDER
+    SNOW
 };
 MapType selectedMap = MapType::GRASS;
 
@@ -1647,6 +1669,15 @@ int main()
     {
         backgroundDesertPath = "../resources/backgroundDesert.png";
         backgroundDesertTexture.loadFromFile(backgroundDesertPath.c_str());
+    }
+    
+    // Load background snow texture
+    std::string backgroundSnowPath = "resources/backgroundSnow.png";
+    backgroundSnowTexture.loadFromFile(backgroundSnowPath.c_str());
+    if (backgroundSnowTexture.id == 0)
+    {
+        backgroundSnowPath = "../resources/backgroundSnow.png";
+        backgroundSnowTexture.loadFromFile(backgroundSnowPath.c_str());
     }
     
     // Create projectile textures if they don't exist
@@ -1785,6 +1816,15 @@ int main()
     }
     std::cout << "Heart texture ID: " << heartTexture.id << std::endl;
 
+    // Load lock texture
+    std::string lockPath = "resources/lock.png";
+    lockTexture.loadFromFile(lockPath.c_str());
+    if (lockTexture.id == 0)
+    {
+        lockPath = "../resources/lock.png";
+        lockTexture.loadFromFile(lockPath.c_str());
+    }
+
     // Initialize enemies
     std::vector<Enemy> enemies(MAX_ENEMIES);
     
@@ -1814,9 +1854,10 @@ int main()
     Rectangle playButton(WIDTH / 2 - 100, HEIGHT / 2 - 80, 200, 60);
     Rectangle optionsButton(WIDTH / 2 - 100, HEIGHT / 2, 200, 60);
     Rectangle exitButton(WIDTH / 2 - 100, HEIGHT / 2 + 80, 200, 60);
-    Rectangle map1Button(WIDTH / 2 - 320, HEIGHT / 2 - 100, 180, 180);
-    Rectangle map2Button(WIDTH / 2 - 90, HEIGHT / 2 - 100, 180, 180);
-    Rectangle map3Button(WIDTH / 2 + 140, HEIGHT / 2 - 100, 180, 180);
+    float mapBtnW = 180, mapBtnH = 180, mapBtnY = HEIGHT / 2 - 100;
+    Rectangle map1Button(WIDTH / 2 - mapBtnW - mapBtnW / 2 - 20, mapBtnY, mapBtnW, mapBtnH);
+    Rectangle map2Button(WIDTH / 2 - mapBtnW / 2, mapBtnY, mapBtnW, mapBtnH);
+    Rectangle map3Button(WIDTH / 2 + mapBtnW / 2 + 20, mapBtnY, mapBtnW, mapBtnH);
 
     // Main game loop
     float lastTime = (float)glfwGetTime();
@@ -1852,10 +1893,14 @@ int main()
         float buttonScale = std::min(scaleX, scaleY);
 
         // Select background and waypoints based on current screen
-        gl2d::Texture& currentBg = (selectedMap == MapType::DESERT) ? backgroundDesertTexture : backgroundTexture;
-        std::vector<Point> currentWaypoints = (selectedMap == MapType::DESERT)
-            ? desertWaypoints
-            : waypoints;
+        gl2d::Texture& currentBg =
+            (selectedMap == MapType::DESERT) ? backgroundDesertTexture :
+            (selectedMap == MapType::SNOW) ? backgroundSnowTexture :
+            backgroundTexture;
+        std::vector<Point> currentWaypoints =
+            (selectedMap == MapType::DESERT) ? desertWaypoints :
+            (selectedMap == MapType::SNOW) ? snowWaypoints :
+            waypoints;
         auto scaledWaypoints = [&]() {
             std::vector<Point> scaled;
             for (const auto &wp : currentWaypoints) {
@@ -1960,16 +2005,23 @@ int main()
             scaledMap3.h *= scaleY;
             // Draw map preview buttons
             bool map1Hovered = isPointInRect((float)mouseX, (float)mouseY, scaledMap1);
-            bool map2Hovered = isPointInRect((float)mouseX, (float)mouseY, scaledMap2);
+            bool map2Hovered = desertMapUnlocked && isPointInRect((float)mouseX, (float)mouseY, scaledMap2);
             bool map3Hovered = isPointInRect((float)mouseX, (float)mouseY, scaledMap3);
-            renderer.renderRectangle({scaledMap1.x, scaledMap1.y, scaledMap1.w, scaledMap1.h}, currentBg, {1, 1, 1, map1Hovered ? 1.0f : 0.8f});
-            renderer.renderRectangle({scaledMap2.x, scaledMap2.y, scaledMap2.w, scaledMap2.h}, backgroundDesertTexture, {1, 1, 1, map2Hovered ? 1.0f : 0.8f});
-            renderer.renderRectangle({scaledMap3.x, scaledMap3.y, scaledMap3.w, scaledMap3.h}, {0.5f, 0.5f, 0.5f, map3Hovered ? 1.0f : 0.8f});
-            // Draw map labels with dynamic scaling
-            float labelSize = 24.0f * scaleY;
-            drawText(renderer, "GRASS", scaledMap1.x + 20 * scaleX, scaledMap1.y + scaledMap1.h + 10 * scaleY, labelSize, 2.0f, 1.0f);
-            drawText(renderer, "DESERT", scaledMap2.x + 20 * scaleX, scaledMap2.y + scaledMap2.h + 10 * scaleY, labelSize, 2.0f, 1.0f);
-            drawText(renderer, "???", scaledMap3.x + 60 * scaleX, scaledMap3.y + scaledMap3.h + 10 * scaleY, labelSize, 2.0f, 1.0f);
+            renderer.renderRectangle({scaledMap1.x, scaledMap1.y, scaledMap1.w, scaledMap1.h}, backgroundTexture, {1, 1, 1, map1Hovered ? 1.0f : 0.8f});
+            // Desert map button: gray overlay if locked
+            if (desertMapUnlocked) {
+                renderer.renderRectangle({scaledMap2.x, scaledMap2.y, scaledMap2.w, scaledMap2.h}, backgroundDesertTexture, {1, 1, 1, map2Hovered ? 1.0f : 0.8f});
+            } else {
+                renderer.renderRectangle({scaledMap2.x, scaledMap2.y, scaledMap2.w, scaledMap2.h}, backgroundDesertTexture, {0.5f, 0.5f, 0.5f, 0.7f});
+                // Draw lock.png icon centered
+                float lockSize = 48 * scaleY;
+                float lockX = scaledMap2.x + (scaledMap2.w - lockSize) / 2.0f;
+                float lockY = scaledMap2.y + (scaledMap2.h - lockSize) / 2.0f;
+                if (lockTexture.id != 0) {
+                    renderer.renderRectangle({lockX, lockY, lockSize, lockSize}, lockTexture, {1, 1, 1, 1});
+                }
+            }
+            renderer.renderRectangle({scaledMap3.x, scaledMap3.y, scaledMap3.w, scaledMap3.h}, backgroundSnowTexture, {1, 1, 1, map3Hovered ? 1.0f : 0.8f});
             renderer.flush();
             // Handle map selection
             if (mouseJustPressed)
@@ -1979,14 +2031,14 @@ int main()
                     selectedMap = MapType::GRASS;
                     currentScreen = GameScreen::DIFFICULTY_SELECT;
                 }
-                else if (map2Hovered)
+                else if (desertMapUnlocked && map2Hovered)
                 {
                     selectedMap = MapType::DESERT;
                     currentScreen = GameScreen::DIFFICULTY_SELECT;
                 }
                 else if (map3Hovered)
                 {
-                    selectedMap = MapType::PLACEHOLDER;
+                    selectedMap = MapType::SNOW;
                     currentScreen = GameScreen::DIFFICULTY_SELECT;
                 }
                 mouseJustPressed = false;
@@ -2005,15 +2057,15 @@ int main()
         {
             renderer.clearScreen({0.1, 0.2, 0.6, 1});
             std::string diffText = "SELECT DIFFICULTY";
-            float diffSize = 48.0f * scaleY;
-            float diffX = (w - diffText.length() * (diffSize + 2.0f)) / 2.0f;
+            float diffSize = 32.0f * scaleY; // Smaller text
+            float diffX = (w - diffText.length() * (diffSize + 2.0f)) / 2.0f - 60 * scaleX; // Move text left
             float diffY = 60 * scaleY;
             drawText(renderer, diffText, diffX, diffY, diffSize, 2.0f, 1.0f);
 
             // New layout: Easy, Medium, Hard side by side, Endless at the bottom
             float btnW = 180 * scaleX;
             float btnH = 70 * scaleY;
-            float spacing = 30 * scaleX;
+            float spacing = 70 * scaleX; // Increased spacing
             float totalWidth = btnW * 3 + spacing * 2;
             float centerX = w / 2.0f;
             float btnY = HEIGHT * scaleY / 2.0f - btnH / 2.0f;
@@ -2034,7 +2086,7 @@ int main()
             auto drawDiffBtn = [&](const Rectangle &rect, const char *label, bool hovered) {
                 Color color = hovered ? Color(0.3f, 0.5f, 0.3f, 1.0f) : Color(0.2f, 0.2f, 0.2f, 1.0f);
                 renderer.renderRectangle({rect.x, rect.y, rect.w, rect.h}, {color.r, color.g, color.b, color.a});
-                float textSize = 32.0f * scaleY;
+                float textSize = 22.0f * scaleY; // Smaller button text
                 float textX = rect.x + (rect.w - strlen(label) * textSize * 0.7f) / 2.0f;
                 float textY = rect.y + (rect.h - textSize) / 2.0f;
                 drawText(renderer, label, textX, textY, textSize, 2.0f, 1.0f);
@@ -2962,6 +3014,10 @@ int main()
             // Click to go to main menu
             if (mouseJustPressed)
             {
+                // Unlock desert map if player won on grass map
+                if (selectedMap == MapType::GRASS) {
+                    desertMapUnlocked = true;
+                }
                 resetGame(enemies, towers, projectiles, beanCount);
                 isGameWon = false;
                 currentScreen = GameScreen::MAIN_MENU;
