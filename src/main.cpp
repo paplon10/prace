@@ -6,14 +6,15 @@
 #include <vector>
 #include <cmath>
 #include <string>
-#include <sstream>  
-#include <algorithm>  
+#include <sstream>
+#include <algorithm>
 #include <map>
 #include <cctype>
+#include <fstream>
 
 // Window size
 const int GAME_WIDTH = 640;
-const int PANEL_WIDTH = 200;  
+const int PANEL_WIDTH = 200;
 const int WIDTH = GAME_WIDTH + PANEL_WIDTH;
 const int HEIGHT = 640;
 
@@ -93,6 +94,18 @@ bool isGameWon = false;
 // Add persistent variable for desert map unlock
 bool desertMapUnlocked = false;
 
+// Add after GameScreen enum
+enum class TutorialStep {
+    INTRO,
+    MOVE_MOUSE,
+    SELECT_TOWER,
+    PLACE_TOWER,
+    START_ROUND,
+    FINISH
+};
+TutorialStep tutorialStep = TutorialStep::INTRO;
+bool tutorialCompleted = false;
+
 // Tower struct
 struct Tower
 {
@@ -109,18 +122,18 @@ struct Tower
     int damageUpgradeLevel;      // Track damage upgrade level
     int attackSpeedUpgradeLevel; // Track attack speed upgrade level
     int rangeUpgradeLevel;       // Track range upgrade level
-    
-    Tower() : pos(0, 0), isPlaced(false), shootTimer(0), range(150.0f), 
-              damage(10.0f), attackSpeed(1.0f), projectileSpeed(300.0f), 
-              type(TowerType::NONE), isUsed(false), usesLeft(0), 
+
+    Tower() : pos(0, 0), isPlaced(false), shootTimer(0), range(150.0f),
+              damage(10.0f), attackSpeed(1.0f), projectileSpeed(300.0f),
+              type(TowerType::NONE), isUsed(false), usesLeft(0),
               damageUpgradeLevel(0), attackSpeedUpgradeLevel(0), rangeUpgradeLevel(0) {}
-              
-    Tower(float x, float y) : pos(x, y), isPlaced(true), shootTimer(0), 
-                              range(150.0f), damage(10.0f), attackSpeed(1.0f), 
-                              projectileSpeed(300.0f), type(TowerType::NONE), 
+
+    Tower(float x, float y) : pos(x, y), isPlaced(true), shootTimer(0),
+                              range(150.0f), damage(10.0f), attackSpeed(1.0f),
+                              projectileSpeed(300.0f), type(TowerType::NONE),
                               isUsed(false), usesLeft(0),
                               damageUpgradeLevel(0), attackSpeedUpgradeLevel(0), rangeUpgradeLevel(0) {}
-                              
+
     void setType(TowerType newType)
     {
         type = newType;
@@ -129,54 +142,54 @@ struct Tower
         rangeUpgradeLevel = 0;
         switch (type)
         {
-            case TowerType::APPLE:  
-                range = 115.0f;  
-                damage = 13.0f;
-                attackSpeed = 1.5f;
-                projectileSpeed = 600.0f;
-                usesLeft = 0;
-                // Fires 10x10 pixel black projectiles
-                break;
-            case TowerType::CARROT:  
-                range = 250.0f;  
-                damage = 26.0f;
-                attackSpeed = 0.75f;
-                projectileSpeed = 1125.0f;
-                usesLeft = 0;
-                // Fires 10x10 pixel black projectiles
-                break;
-            case TowerType::POTATO:  
-                range = 75.0f;  
-                damage = 4.0f;   
-                attackSpeed = 5.0f;
-                projectileSpeed = 750.0f;
-                usesLeft = 0;
-                // Fires 10x10 pixel black projectiles
-                break;
-            case TowerType::PINEAPPLE:  
-                range = 90.0f;  
-                damage = 10.0f;  
-                attackSpeed = 1.0f;
-                projectileSpeed = 450.0f;
-                usesLeft = 0;
-                // Fires 10x10 pixel black projectiles in 8 directions
-                break;
-            case TowerType::BANANA_PEEL:
-                range = 0.0f;  
-                damage = 50.0f;  
-                attackSpeed = 0.0f; 
-                projectileSpeed = 0.0f;
-                usesLeft = 0;    
-                break;
-            case TowerType::CACTUS:
-                range = 0.0f;    
-                damage = 20.0f;   
-                attackSpeed = 0.0f;
-                projectileSpeed = 0.0f;
-                usesLeft = -1;   
-                break;
-            default:
-                break;
+        case TowerType::APPLE:
+            range = 115.0f;
+            damage = 13.0f;
+            attackSpeed = 1.5f;
+            projectileSpeed = 600.0f;
+            usesLeft = 0;
+            // Fires 10x10 pixel black projectiles
+            break;
+        case TowerType::CARROT:
+            range = 250.0f;
+            damage = 26.0f;
+            attackSpeed = 0.75f;
+            projectileSpeed = 1125.0f;
+            usesLeft = 0;
+            // Fires 10x10 pixel black projectiles
+            break;
+        case TowerType::POTATO:
+            range = 75.0f;
+            damage = 4.0f;
+            attackSpeed = 5.0f;
+            projectileSpeed = 750.0f;
+            usesLeft = 0;
+            // Fires 10x10 pixel black projectiles
+            break;
+        case TowerType::PINEAPPLE:
+            range = 90.0f;
+            damage = 10.0f;
+            attackSpeed = 1.0f;
+            projectileSpeed = 450.0f;
+            usesLeft = 0;
+            // Fires 10x10 pixel black projectiles in 8 directions
+            break;
+        case TowerType::BANANA_PEEL:
+            range = 0.0f;
+            damage = 50.0f;
+            attackSpeed = 0.0f;
+            projectileSpeed = 0.0f;
+            usesLeft = 0;
+            break;
+        case TowerType::CACTUS:
+            range = 0.0f;
+            damage = 20.0f;
+            attackSpeed = 0.0f;
+            projectileSpeed = 0.0f;
+            usesLeft = -1;
+            break;
+        default:
+            break;
         }
     }
 
@@ -187,30 +200,30 @@ struct Tower
             return -1; // Max level reached
         if (type == TowerType::BANANA_PEEL)
             return -1; // No upgrades for banana peel
-        
+
         // Get base cost for tower type
         int baseCost;
         switch (type)
         {
-            case TowerType::APPLE:
-                baseCost = BASE_APPLE_COST;
-                break;
-            case TowerType::CARROT:
-                baseCost = BASE_CARROT_COST;
-                break;
-            case TowerType::POTATO:
-                baseCost = BASE_POTATO_COST;
-                break;
-            case TowerType::PINEAPPLE:
-                baseCost = BASE_PINEAPPLE_COST;
-                break;
-            case TowerType::CACTUS:
-                baseCost = BASE_CACTUS_COST;
-                break;
-            default:
-                return 0;
+        case TowerType::APPLE:
+            baseCost = BASE_APPLE_COST;
+            break;
+        case TowerType::CARROT:
+            baseCost = BASE_CARROT_COST;
+            break;
+        case TowerType::POTATO:
+            baseCost = BASE_POTATO_COST;
+            break;
+        case TowerType::PINEAPPLE:
+            baseCost = BASE_PINEAPPLE_COST;
+            break;
+        case TowerType::CACTUS:
+            baseCost = BASE_CACTUS_COST;
+            break;
+        default:
+            return 0;
         }
-        
+
         return (baseCost * (currentLevel + 1)) / 2; // Each upgrade costs 50% more than the last
     }
 
@@ -221,7 +234,7 @@ struct Tower
             return; // Max level reached
         if (type == TowerType::BANANA_PEEL)
             return; // No upgrades for banana peel
-        
+
         damageUpgradeLevel++;
         damage *= 1.3f; // +30% damage per level
     }
@@ -232,7 +245,7 @@ struct Tower
             return; // Max level reached
         if (type == TowerType::BANANA_PEEL)
             return; // No upgrades for banana peel
-        
+
         attackSpeedUpgradeLevel++;
         attackSpeed *= 1.2f; // +20% attack speed per level
     }
@@ -243,7 +256,7 @@ struct Tower
             return; // Max level reached
         if (type == TowerType::BANANA_PEEL)
             return; // No upgrades for banana peel
-        
+
         rangeUpgradeLevel++;
         range *= 1.15f;           // +15% range per level
         projectileSpeed *= 1.15f; // Also increase projectile speed by 15%
@@ -261,26 +274,26 @@ struct Projectile
     float distanceTraveled;
     float maxDistance;
     TowerType sourceType; // Track which tower type fired this projectile
-    
-    Projectile() : pos(0, 0), velocity(0, 0), active(false), speed(450.0f), damage(10.0f), 
+
+    Projectile() : pos(0, 0), velocity(0, 0), active(false), speed(450.0f), damage(10.0f),
                    distanceTraveled(0.0f), maxDistance(300.0f), sourceType(TowerType::NONE) {}
-    
+
     void update(float deltaTime)
     {
         if (!active)
             return;
-        
+
         // Calculate movement
         float moveX = velocity.x * speed * deltaTime;
         float moveY = velocity.y * speed * deltaTime;
-        
+
         // Update position
         pos.x += moveX;
         pos.y += moveY;
-        
+
         // Track distance traveled
         distanceTraveled += std::sqrt(moveX * moveX + moveY * moveY);
-        
+
         // Deactivate if maximum distance reached
         if (distanceTraveled >= maxDistance)
         {
@@ -291,9 +304,9 @@ struct Projectile
 
 // Tower settings
 const float TOWER_SIZE = 40.0f;
-const float ENEMY_SIZE = 30.0f;       
-const float BOSS_SIZE = 60.0f;        
-const float TANK_SIZE = 40.0f;        
+const float ENEMY_SIZE = 30.0f;
+const float BOSS_SIZE = 60.0f;
+const float TANK_SIZE = 40.0f;
 const float GHOST_SIZE = 28.0f;
 const float PROJECTILE_SIZE = 20.0f; // Increased from 10 for better visibility
 
@@ -328,7 +341,7 @@ struct TowerMenu
     Rectangle upgradeButton2; // Second upgrade option
     Rectangle upgradeButton3; // Third upgrade option
     Rectangle closeButton;
-    
+
     TowerMenu() : isOpen(false), selectedTower(nullptr)
     {
         // Initialize with dummy values; will be set dynamically before rendering
@@ -338,7 +351,7 @@ struct TowerMenu
         upgradeButton3 = Rectangle(0, 0, 160, 40);
         closeButton = Rectangle(0, 0, 30, 30);
     }
-    
+
     void open(Tower *tower)
     {
         isOpen = true;
@@ -359,8 +372,8 @@ struct TowerButton
     Rectangle rect;
     TowerType type;
     bool isHovered;
-    
-    TowerButton(float x, float y, float w, float h, TowerType t) 
+
+    TowerButton(float x, float y, float w, float h, TowerType t)
         : rect{x, y, w, h}, type(t), isHovered(false) {}
 };
 
@@ -372,12 +385,14 @@ enum class GameScreen
     DIFFICULTY_SELECT, // New screen for difficulty selection
     GAME,
     OPTIONS,
-    PAUSE_MENU
+    PAUSE_MENU,
+    TUTORIAL 
 };
 GameScreen currentScreen = GameScreen::MAIN_MENU;
 
 // Add difficulty enum and variable
-enum class Difficulty {
+enum class Difficulty
+{
     EASY,
     MEDIUM,
     HARD,
@@ -390,17 +405,17 @@ std::string getEnemyName(EnemyType type)
 {
     switch (type)
     {
-        case EnemyType::SKELETON:
-            return "Skeleton";
-        case EnemyType::BOSS:
-            return "BOSS";
-        case EnemyType::TANK:
-            return "Tank";
-        case EnemyType::GHOST:
-            return "Ghost";
-        case EnemyType::ZOMBIE:
-        default:
-            return "Zombie";
+    case EnemyType::SKELETON:
+        return "Skeleton";
+    case EnemyType::BOSS:
+        return "BOSS";
+    case EnemyType::TANK:
+        return "Tank";
+    case EnemyType::GHOST:
+        return "Ghost";
+    case EnemyType::ZOMBIE:
+    default:
+        return "Zombie";
     }
 }
 
@@ -425,15 +440,15 @@ std::vector<Point> waypoints = {
 
 // For the desert map
 std::vector<Point> desertWaypoints = {
-    Point(90, 640),    
-    Point(90, 85),   
-    Point(330, 85),  
-    Point(330, 465), 
-    Point(470, 465), 
-    Point(470, 28),  
-    Point(520, 28),  
-    Point(520, 520),    
-    Point(280, 520),    
+    Point(90, 640),
+    Point(90, 85),
+    Point(330, 85),
+    Point(330, 465),
+    Point(470, 465),
+    Point(470, 28),
+    Point(520, 28),
+    Point(520, 520),
+    Point(280, 520),
     Point(280, 130),
     Point(135, 130),
     Point(135, 640),
@@ -449,8 +464,7 @@ std::vector<Point> snowWaypoints = {
     Point(100, 545),
     Point(100, 160),
     Point(220, 160),
-    Point(220, 0) 
-};
+    Point(220, 0)};
 
 // Function to get scaled waypoints based on current scale
 std::vector<Point> getScaledWaypoints(float scaleX, float scaleY)
@@ -496,8 +510,8 @@ bool isNearPath(const Point &p, const std::vector<Point> &waypoints, float thres
         float clampedProjection = std::max(0.0f, std::min(1.0f, projection));
         float closestX = a.x + clampedProjection * abx;
         float closestY = a.y + clampedProjection * aby;
-        float dist = std::sqrt((p.x - closestX) * (p.x - closestX) + 
-                              (p.y - closestY) * (p.y - closestY));
+        float dist = std::sqrt((p.x - closestX) * (p.x - closestX) +
+                               (p.y - closestY) * (p.y - closestY));
         if (dist < threshold)
         {
             return true;
@@ -585,17 +599,17 @@ Color getEnemyColor(EnemyType type)
 {
     switch (type)
     {
-        case EnemyType::SKELETON:
-            return Color(0.0f, 0.0f, 1.0f, 1.0f); // Blue for Skeleton
-        case EnemyType::BOSS:
-            return Color(0.5f, 0.0f, 0.5f, 1.0f); // Purple for Boss
-        case EnemyType::TANK:
-            return Color(0.5f, 0.5f, 0.0f, 1.0f); // Yellow for Tank
-        case EnemyType::GHOST:
-            return Color(0.8f, 0.8f, 0.8f, 0.8f); // Semi-transparent white for Ghost
-        case EnemyType::ZOMBIE:
-        default:
-            return Color(1.0f, 0.0f, 0.0f, 1.0f); // Red for Zombie
+    case EnemyType::SKELETON:
+        return Color(0.0f, 0.0f, 1.0f, 1.0f); // Blue for Skeleton
+    case EnemyType::BOSS:
+        return Color(0.5f, 0.0f, 0.5f, 1.0f); // Purple for Boss
+    case EnemyType::TANK:
+        return Color(0.5f, 0.5f, 0.0f, 1.0f); // Yellow for Tank
+    case EnemyType::GHOST:
+        return Color(0.8f, 0.8f, 0.8f, 0.8f); // Semi-transparent white for Ghost
+    case EnemyType::ZOMBIE:
+    default:
+        return Color(1.0f, 0.0f, 0.0f, 1.0f); // Red for Zombie
     }
 }
 
@@ -604,28 +618,28 @@ float getEnemySpeed(EnemyType type)
 {
     // Base speeds in pixels per second
     float baseSpeed = 0.0f;
-    
+
     // Get base speed for enemy type (in pixels per second)
     switch (type)
     {
-        case EnemyType::SKELETON:
+    case EnemyType::SKELETON:
         baseSpeed = 80.0f; // fast
-            break;
-        case EnemyType::BOSS:
+        break;
+    case EnemyType::BOSS:
         baseSpeed = 25.0f; // very slow
-            break;
-        case EnemyType::TANK:
+        break;
+    case EnemyType::TANK:
         baseSpeed = 35.0f; // slow
-            break;
-        case EnemyType::GHOST:
+        break;
+    case EnemyType::GHOST:
         baseSpeed = 120.0f; // very fast
-            break;
-        case EnemyType::ZOMBIE:
-        default:
+        break;
+    case EnemyType::ZOMBIE:
+    default:
         baseSpeed = 50.0f; // normal
-            break;
+        break;
     }
-    
+
     // Calculate speed multiplier based on round number
     float speedMultiplier = 1.0f;
     if (currentRound > 1)
@@ -633,7 +647,7 @@ float getEnemySpeed(EnemyType type)
         // Increase speed by 8% per round
         speedMultiplier = 1.0f + ((currentRound - 1) * 0.08f);
     }
-    
+
     // Return scaled speed
     return baseSpeed * speedMultiplier;
 }
@@ -671,16 +685,17 @@ void processInput(GLFWwindow *window)
             currentScreen = GameScreen::GAME;
         }
     }
-    
+
     // Get mouse position
     glfwGetCursorPos(window, &mouseX, &mouseY);
-    
+
     // Get mouse button state
-    if (!mouseJustPressed)
-    { // Only check regular state if not just pressed
-        mouseLeftPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-    }
-    
+    static bool prevMouseLeftPressed = false;
+    bool currentMouseLeftPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    mouseJustPressed = currentMouseLeftPressed && !prevMouseLeftPressed;
+    mouseLeftPressed = currentMouseLeftPressed;
+    prevMouseLeftPressed = currentMouseLeftPressed;
+
     // Tower type selection
     static bool key1Pressed = false;
     static bool key2Pressed = false;
@@ -688,7 +703,7 @@ void processInput(GLFWwindow *window)
     static bool key4Pressed = false;
     static bool key5Pressed = false;
     static bool key6Pressed = false;
-    
+
     // Only allow tower selection via keyboard if the tower menu is closed and we're in the game
     if (!towerMenu.isOpen && currentScreen == GameScreen::GAME)
     {
@@ -702,7 +717,7 @@ void processInput(GLFWwindow *window)
         {
             key1Pressed = false;
         }
-        
+
         if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS && !key2Pressed)
         {
             placementTower.setType(TowerType::CARROT);
@@ -713,7 +728,7 @@ void processInput(GLFWwindow *window)
         {
             key2Pressed = false;
         }
-        
+
         if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS && !key3Pressed)
         {
             placementTower.setType(TowerType::POTATO);
@@ -724,7 +739,7 @@ void processInput(GLFWwindow *window)
         {
             key3Pressed = false;
         }
-        
+
         if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS && !key4Pressed)
         {
             placementTower.setType(TowerType::PINEAPPLE);
@@ -735,7 +750,7 @@ void processInput(GLFWwindow *window)
         {
             key4Pressed = false;
         }
-        
+
         if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS && !key5Pressed)
         {
             placementTower.setType(TowerType::BANANA_PEEL);
@@ -746,7 +761,7 @@ void processInput(GLFWwindow *window)
         {
             key5Pressed = false;
         }
-        
+
         if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS && !key6Pressed)
         {
             placementTower.setType(TowerType::CACTUS);
@@ -805,10 +820,10 @@ void updateEnemy(Enemy &enemy, float deltaTime, const std::vector<Tower> &towers
         enemy.progress = 0.0f;
         return;
     }
-    
+
     // Get base speed and adjust for window scaling
     float baseSpeed = getEnemySpeed(enemy.type);
-    
+
     // Calculate the average segment length to normalize speed
     float totalPathLength = 0.0f;
     for (size_t i = 0; i < waypoints.size() - 1; i++)
@@ -816,17 +831,17 @@ void updateEnemy(Enemy &enemy, float deltaTime, const std::vector<Tower> &towers
         totalPathLength += distance(waypoints[i], waypoints[i + 1]);
     }
     float averageSegmentLength = totalPathLength / (waypoints.size() - 1);
-    
+
     // Adjust speed based on segment length relative to average
     // Longer segments should have slower movement
     float segmentRatio = segLen / averageSegmentLength;
     float speedMultiplier = 1.0f / std::sqrt(segmentRatio);
     float adjustedSpeed = baseSpeed * speedMultiplier;
-    
+
     float moveDist = adjustedSpeed * deltaTime;
     float moveProgress = moveDist / segLen;
     enemy.progress += moveProgress;
-    
+
     while (enemy.progress >= 1.0f && enemy.currentWaypoint < waypoints.size() - 2)
     {
         enemy.currentWaypoint++;
@@ -988,19 +1003,19 @@ void spawnProjectile(std::vector<Projectile> &projectiles, const Point &start, c
             proj.distanceTraveled = 0.0f;          // Reset distance traveled
             proj.maxDistance = tower.range * 1.2f; // Set max distance based on tower range
             proj.sourceType = tower.type;          // Set the source tower type
-            
+
             // Calculate direction to target
             float dx = target.x - start.x;
             float dy = target.y - start.y;
             float dist = std::sqrt(dx * dx + dy * dy);
-            
+
             // Normalize direction
             if (dist > 0)
             {
                 proj.velocity.x = dx / dist;
                 proj.velocity.y = dy / dist;
             }
-            
+
             return;
         }
     }
@@ -1012,13 +1027,13 @@ void spawnProjectilesInAllDirections(std::vector<Projectile> &projectiles, const
     // 8 directions: N, NE, E, SE, S, SW, W, NW
     const int numDirections = 8;
     const float angleStep = 2.0f * 3.14159f / numDirections; // 45 degrees in radians
-    
+
     for (int i = 0; i < numDirections; i++)
     {
         float angle = i * angleStep;
         float dx = cos(angle);
         float dy = sin(angle);
-        
+
         // Find available projectile
         for (auto &proj : projectiles)
         {
@@ -1075,37 +1090,37 @@ int getTowerCost(TowerType type)
 {
     float costMultiplier = 1.0f;
     int baseCost = 0;
-    
+
     switch (type)
     {
-        case TowerType::APPLE:
-            baseCost = BASE_APPLE_COST;
-            costMultiplier = pow(1.2f, appleTowerCount);
-            break;
-        case TowerType::CARROT:
-            baseCost = BASE_CARROT_COST;
-            costMultiplier = pow(1.2f, carrotTowerCount);
-            break;
-        case TowerType::POTATO:
-            baseCost = BASE_POTATO_COST;
-            costMultiplier = pow(1.2f, potatoTowerCount);
-            break;
-        case TowerType::PINEAPPLE:
-            baseCost = BASE_PINEAPPLE_COST;
-            costMultiplier = pow(1.2f, pineappleTowerCount);
-            break;
-        case TowerType::BANANA_PEEL:
-            baseCost = BASE_BANANA_PEEL_COST;
-            costMultiplier = pow(1.2f, bananaPeelTowerCount);
-            break;
-        case TowerType::CACTUS:
-            baseCost = BASE_CACTUS_COST;
-            costMultiplier = pow(1.2f, cactusTowerCount);
-            break;
-        default:
-            return 0;
+    case TowerType::APPLE:
+        baseCost = BASE_APPLE_COST;
+        costMultiplier = pow(1.2f, appleTowerCount);
+        break;
+    case TowerType::CARROT:
+        baseCost = BASE_CARROT_COST;
+        costMultiplier = pow(1.2f, carrotTowerCount);
+        break;
+    case TowerType::POTATO:
+        baseCost = BASE_POTATO_COST;
+        costMultiplier = pow(1.2f, potatoTowerCount);
+        break;
+    case TowerType::PINEAPPLE:
+        baseCost = BASE_PINEAPPLE_COST;
+        costMultiplier = pow(1.2f, pineappleTowerCount);
+        break;
+    case TowerType::BANANA_PEEL:
+        baseCost = BASE_BANANA_PEEL_COST;
+        costMultiplier = pow(1.2f, bananaPeelTowerCount);
+        break;
+    case TowerType::CACTUS:
+        baseCost = BASE_CACTUS_COST;
+        costMultiplier = pow(1.2f, cactusTowerCount);
+        break;
+    default:
+        return 0;
     }
-    
+
     return int(baseCost * costMultiplier);
 }
 
@@ -1187,7 +1202,7 @@ void drawNumber(gl2d::Renderer2D &renderer, int number, float x, float y, float 
 {
     std::string numStr = std::to_string(number);
     float spacing = digitSize * 1.2f; // Add some space between digits
-    
+
     // Draw background
     float bgWidth = spacing * numStr.length() + digitSize;
     renderer.renderRectangle(
@@ -1263,16 +1278,16 @@ void startNewRound(std::vector<Enemy> &enemies, int &round)
 {
     round++;
     enemiesLeftInRound = getEnemiesForRound(round);
-    
+
     // Add one extra enemy for the boss on boss rounds
     if (isBossRound(round))
     {
         enemiesLeftInRound += 1;
     }
-    
+
     isRoundActive = true;
     enemySpawnTimer = 0.0f;
-    
+
     std::cout << "Round " << round << " starting! Enemies: " << enemiesLeftInRound;
     if (isBossRound(round))
     {
@@ -1289,7 +1304,7 @@ bool isRoundComplete(const std::vector<Enemy> &enemies)
     {
         return false;
     }
-    
+
     for (const auto &enemy : enemies)
     {
         if (enemy.isActive)
@@ -1297,27 +1312,41 @@ bool isRoundComplete(const std::vector<Enemy> &enemies)
             return false;
         }
     }
-    
+
     return true;
 }
 
 // Helper to get win round for current difficulty
-int getWinRoundForDifficulty(Difficulty diff) {
-    switch (diff) {
-        case Difficulty::EASY: return 10;
-        case Difficulty::MEDIUM: return 20;
-        case Difficulty::HARD: return 30;
-        case Difficulty::ENDLESS: default: return -1;
+int getWinRoundForDifficulty(Difficulty diff)
+{
+    switch (diff)
+    {
+    case Difficulty::EASY:
+        return 10;
+    case Difficulty::MEDIUM:
+        return 20;
+    case Difficulty::HARD:
+        return 30;
+    case Difficulty::ENDLESS:
+    default:
+        return -1;
     }
 }
 
 // Move the full definition of getStartingBeansForDifficulty here
-int getStartingBeansForDifficulty(Difficulty diff) {
-    switch (diff) {
-        case Difficulty::EASY: return 100;
-        case Difficulty::MEDIUM: return 69;
-        case Difficulty::HARD: return 40;
-        case Difficulty::ENDLESS: default: return 69;
+int getStartingBeansForDifficulty(Difficulty diff)
+{
+    switch (diff)
+    {
+    case Difficulty::EASY:
+        return 100;
+    case Difficulty::MEDIUM:
+        return 69;
+    case Difficulty::HARD:
+        return 40;
+    case Difficulty::ENDLESS:
+    default:
+        return 69;
     }
 }
 
@@ -1329,16 +1358,16 @@ void resetGame(std::vector<Enemy> &enemies, std::vector<Tower> &towers, std::vec
     {
         enemy.isActive = false;
     }
-    
+
     // Clear all towers
     towers.clear();
-    
+
     // Clear all projectiles
     for (auto &proj : projectiles)
     {
         proj.active = false;
     }
-    
+
     // Reset tower counts
     appleTowerCount = 0;
     carrotTowerCount = 0;
@@ -1346,20 +1375,20 @@ void resetGame(std::vector<Enemy> &enemies, std::vector<Tower> &towers, std::vec
     pineappleTowerCount = 0;
     bananaPeelTowerCount = 0;
     cactusTowerCount = 0;
-    
+
     // Reset round variables
     currentRound = 0;
     enemiesLeftInRound = 0;
     roundStartTimer = 5.0f;
     isRoundActive = false;
-    
+
     // Reset game state
     isGameOver = false;
     lives = 3;
-    
+
     // Reset beans
     beanCount = getStartingBeansForDifficulty(selectedDifficulty);
-    
+
     std::cout << "Game reset! Starting new game..." << std::endl;
 }
 
@@ -1371,20 +1400,20 @@ void renderCactus(gl2d::Renderer2D &renderer, const Tower &tower, float scaleX, 
     float drawX = tower.pos.x * scaleX;
     float drawY = tower.pos.y * scaleY;
     float drawCactusSize = cactusSize * ((scaleX + scaleY) / 2.0f);
-    
+
     // Draw main green cactus body
     renderer.renderRectangle(
         {drawX - drawCactusSize / 4, drawY - drawCactusSize / 2, drawCactusSize / 2, drawCactusSize},
         {towerColor.r, towerColor.g, towerColor.b, towerColor.a});
-    
+
     // Draw a smaller arm on the side
     renderer.renderRectangle(
         {drawX - drawCactusSize / 4, drawY - drawCactusSize / 4, drawCactusSize / 2, drawCactusSize / 3},
         {towerColor.r, towerColor.g, towerColor.b, towerColor.a});
-    
+
     // Draw some spines/spikes using small rectangles
     Color spikeColor(1.0f, 1.0f, 1.0f, 0.9f);
-    
+
     // Always draw 5 spikes since cactus is permanent
     for (int i = 0; i < 5; i++)
     {
@@ -1465,24 +1494,24 @@ void createSimpleTexture(const std::string &filename, const Color &color)
     {
         return;
     }
-    
+
     // Create a simple 32x32 colored image
     const int width = 32;
     const int height = 32;
     std::vector<unsigned char> pixels(width * height * 4, 0);
-    
+
     // Fill with color, making a circular shape
     for (int y = 0; y < height; y++)
     {
         for (int x = 0; x < width; x++)
         {
             int index = (y * width + x) * 4;
-            
+
             // Calculate distance from center for circular shape
             float dx = x - width / 2;
             float dy = y - height / 2;
             float distance = std::sqrt(dx * dx + dy * dy);
-            
+
             // If within radius, set pixel color
             if (distance <= width / 2)
             {
@@ -1572,23 +1601,123 @@ enum class MapType
 {
     GRASS,
     DESERT,
-    SNOW
+    SNOW,
+    TUTORIAL // Added tutorial map type
 };
 MapType selectedMap = MapType::GRASS;
 
 // Add menu button rectangles
 Rectangle playButton;
-Rectangle optionsButton;
+Rectangle tutorialButton;
 Rectangle exitButton;
 
 // ... inside main() after loading background textures ...
-    // Placeholder: use a solid color for now
-    gl2d::Texture placeholderTexture;
+// Placeholder: use a solid color for now
+gl2d::Texture placeholderTexture;
 
 gl2d::Texture backgroundDesertTexture;
 
-inline float distance(float x1, float y1, float x2, float y2) {
-    return std::sqrt((x2 - x1)*(x2 - x1) + (y2 - y1)*(y2 - y1));
+inline float distance(float x1, float y1, float x2, float y2)
+{
+    return std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+}
+
+// Helper functions for tutorial persistence
+bool isTutorialComplete() {
+    return std::filesystem::exists("resources/tutorial_complete.txt");
+}
+void markTutorialComplete() {
+    std::ofstream f("resources/tutorial_complete.txt");
+    f << "done";
+    f.close();
+}
+
+// Function to show a tutorial message overlay and pause the game
+void showTutorialMessage(const std::string &message, gl2d::Renderer2D &renderer, int w, int h, float scaleX, float scaleY)
+{
+    // Draw message box
+    float boxW = 500 * scaleX;
+    float boxH = 120 * scaleY;
+    float boxX = (w - boxW) / 2.0f;
+    float boxY = (h - boxH) / 2.0f - 100 * scaleY; // Move higher
+    renderer.renderRectangle({boxX, boxY, boxW, boxH}, {0.15f, 0.15f, 0.15f, 0.5f}); // More transparent
+
+    // Draw message text (smaller font, word wrap)
+    float textSize = 16.0f * scaleY;
+    float textX = boxX + 10 * scaleX;
+    float textY = boxY + 15 * scaleY; // Move text higher in the box
+    float maxLineWidth = boxW - 60 * scaleX;
+    std::vector<std::string> lines;
+    std::string currentLine, currentWord;
+    float currentLineWidth = 0.0f;
+    for (size_t i = 0; i < message.size(); ++i) {
+        char c = message[i];
+        if (c == '\n') {
+            if (!currentWord.empty()) {
+                currentLine += currentWord;
+                currentWord.clear();
+            }
+            lines.push_back(currentLine);
+            currentLine.clear();
+            currentLineWidth = 0.0f;
+        } else if (c == ' ') {
+            // Estimate word width
+            float wordWidth = (currentWord.length() + 1) * textSize * 0.7f;
+            if (currentLineWidth + wordWidth > maxLineWidth) {
+                lines.push_back(currentLine);
+                currentLine.clear();
+                currentLineWidth = 0.0f;
+            }
+            currentLine += currentWord + ' ';
+            currentLineWidth += wordWidth;
+            currentWord.clear();
+        } else {
+            currentWord += c;
+        }
+    }
+    if (!currentWord.empty()) {
+        float wordWidth = (currentWord.length()) * textSize * 0.7f;
+        if (currentLineWidth + wordWidth > maxLineWidth) {
+            lines.push_back(currentLine);
+            currentLine = currentWord;
+        } else {
+            currentLine += currentWord;
+        }
+    }
+    if (!currentLine.empty()) {
+        lines.push_back(currentLine);
+    }
+    for (size_t i = 0; i < lines.size(); ++i) {
+        drawText(renderer, lines[i], textX, textY + i * (textSize + 4.0f * scaleY), textSize, 2.0f, 1.0f);
+    }
+}
+
+// Global variables for tutorial message state
+bool showingTutorialMessage = false;
+std::string tutorialMessageText;
+
+// Tower unlock state for tutorial
+bool tutorialTowerUnlocked[6] = {true, false, false, false, false, false}; // Apple, Carrot, Potato, Pineapple, Banana, Cactus
+int tutorialLastRound = 0;
+
+// Helper to get tower explanation
+std::string getTowerExplanation(TowerType type) {
+    switch (type) {
+        case TowerType::APPLE:
+            return "Apple Tower: Balanced stats, good for general use.";
+        case TowerType::CARROT:
+            return "Carrot Tower: This tower has high damage and high range, but attack speed is very slow.";
+        case TowerType::POTATO:
+            return "Potato Tower: Fast attack speed, but low range and low damage.";
+        case TowerType::PINEAPPLE:
+            return "Pineapple Tower: Shoots in eight directions, good for crowd control.";
+        case TowerType::BANANA_PEEL:
+            return "Banana Peel: Place on the path to deal a lot of damage to one enemy.";
+        case TowerType::CACTUS:
+            return "Cactus Tower: Place on the path, deals low damage but lasts forever.";
+        default:
+            return "";
+    }
 }
 
 int main()
@@ -1615,7 +1744,7 @@ int main()
 
     // Make the OpenGL context current
     glfwMakeContextCurrent(window);
-    
+
     // Set mouse button callback
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
@@ -1640,7 +1769,7 @@ int main()
 
     // Load background texture
     gl2d::Texture backgroundTexture;
-    
+
     // Check if file exists
     if (!std::filesystem::exists("resources/background.png"))
     {
@@ -1649,7 +1778,7 @@ int main()
         std::cin.get();
         return -1;
     }
-    
+
     backgroundTexture.loadFromFile("resources/background.png");
 
     if (backgroundTexture.id == 0)
@@ -1670,7 +1799,7 @@ int main()
         backgroundDesertPath = "../resources/backgroundDesert.png";
         backgroundDesertTexture.loadFromFile(backgroundDesertPath.c_str());
     }
-    
+
     // Load background snow texture
     std::string backgroundSnowPath = "resources/backgroundSnow.png";
     backgroundSnowTexture.loadFromFile(backgroundSnowPath.c_str());
@@ -1679,13 +1808,13 @@ int main()
         backgroundSnowPath = "../resources/backgroundSnow.png";
         backgroundSnowTexture.loadFromFile(backgroundSnowPath.c_str());
     }
-    
+
     // Create projectile textures if they don't exist
     createSimpleTexture("resources/apple.png", Color(1.0f, 0.2f, 0.2f, 1.0f));     // Red apple
     createSimpleTexture("resources/carrot.png", Color(1.0f, 0.5f, 0.0f, 1.0f));    // Orange carrot
     createSimpleTexture("resources/potato.png", Color(0.6f, 0.4f, 0.2f, 1.0f));    // Brown potato
     createSimpleTexture("resources/pineapple.png", Color(0.8f, 0.8f, 0.0f, 1.0f)); // Yellow pineapple
-    
+
     // Load projectile textures
     std::string applePath = "resources/apple.png";
     appleTexture.loadFromFile(applePath.c_str());
@@ -1694,7 +1823,7 @@ int main()
         applePath = "../resources/apple.png";
         appleTexture.loadFromFile(applePath.c_str());
     }
-    
+
     std::string carrotPath = "resources/carrot.png";
     carrotTexture.loadFromFile(carrotPath.c_str());
     if (carrotTexture.id == 0)
@@ -1710,7 +1839,7 @@ int main()
         carrotTowerPath = "../resources/carrotTower.png";
         carrotTowerTexture.loadFromFile(carrotTowerPath.c_str());
     }
-    
+
     std::string appleTowerPath = "resources/appleTower.png";
     appleTowerTexture.loadFromFile(appleTowerPath.c_str());
     if (appleTowerTexture.id == 0)
@@ -1757,7 +1886,7 @@ int main()
         potatoPath = "../resources/potato.png";
         potatoTexture.loadFromFile(potatoPath.c_str());
     }
-    
+
     std::string pineapplePath = "resources/pineapple.png";
     pineappleTexture.loadFromFile(pineapplePath.c_str());
     if (pineappleTexture.id == 0)
@@ -1765,7 +1894,7 @@ int main()
         pineapplePath = "../resources/pineapple.png";
         pineappleTexture.loadFromFile(pineapplePath.c_str());
     }
-    
+
     // Load enemy textures
     std::string zombiePath = "resources/zombie.png";
     zombieTexture.loadFromFile(zombiePath.c_str());
@@ -1774,7 +1903,7 @@ int main()
         zombiePath = "../resources/zombie.png";
         zombieTexture.loadFromFile(zombiePath.c_str());
     }
-    
+
     std::string skeletonPath = "resources/skeleton.png";
     skeletonTexture.loadFromFile(skeletonPath.c_str());
     if (skeletonTexture.id == 0)
@@ -1782,7 +1911,7 @@ int main()
         skeletonPath = "../resources/skeleton.png";
         skeletonTexture.loadFromFile(skeletonPath.c_str());
     }
-    
+
     std::string bossPath = "resources/boss.png";
     bossTexture.loadFromFile(bossPath.c_str());
     if (bossTexture.id == 0)
@@ -1790,7 +1919,7 @@ int main()
         bossPath = "../resources/boss.png";
         bossTexture.loadFromFile(bossPath.c_str());
     }
-    
+
     std::string tankPath = "resources/tank.png";
     tankTexture.loadFromFile(tankPath.c_str());
     if (tankTexture.id == 0)
@@ -1798,7 +1927,7 @@ int main()
         tankPath = "../resources/tank.png";
         tankTexture.loadFromFile(tankPath.c_str());
     }
-    
+
     std::string ghostPath = "resources/ghost.png";
     ghostTexture.loadFromFile(ghostPath.c_str());
     if (ghostTexture.id == 0)
@@ -1827,7 +1956,7 @@ int main()
 
     // Initialize enemies
     std::vector<Enemy> enemies(MAX_ENEMIES);
-    
+
     // Initialize towers
     std::vector<Tower> towers;
 
@@ -1847,20 +1976,25 @@ int main()
         TowerButton(GAME_WIDTH + 20, 190, 160, 60, TowerType::POTATO),
         TowerButton(GAME_WIDTH + 20, 260, 160, 60, TowerType::PINEAPPLE),
         TowerButton(GAME_WIDTH + 20, 330, 160, 60, TowerType::BANANA_PEEL),
-        TowerButton(GAME_WIDTH + 20, 400, 160, 60, TowerType::CACTUS)
-    };
+        TowerButton(GAME_WIDTH + 20, 400, 160, 60, TowerType::CACTUS)};
 
     // Menu and map selection button rectangles
     Rectangle playButton(WIDTH / 2 - 100, HEIGHT / 2 - 80, 200, 60);
-    Rectangle optionsButton(WIDTH / 2 - 100, HEIGHT / 2, 200, 60);
+    Rectangle tutorialButton(WIDTH / 2 - 100, HEIGHT / 2, 200, 60);
     Rectangle exitButton(WIDTH / 2 - 100, HEIGHT / 2 + 80, 200, 60);
     float mapBtnW = 180, mapBtnH = 180, mapBtnY = HEIGHT / 2 - 100;
     Rectangle map1Button(WIDTH / 2 - mapBtnW - mapBtnW / 2 - 20, mapBtnY, mapBtnW, mapBtnH);
     Rectangle map2Button(WIDTH / 2 - mapBtnW / 2, mapBtnY, mapBtnW, mapBtnH);
     Rectangle map3Button(WIDTH / 2 + mapBtnW / 2 + 20, mapBtnY, mapBtnW, mapBtnH);
 
+    // At start of main, after loading resources, check tutorial
+    tutorialCompleted = isTutorialComplete();
+
     // Main game loop
     float lastTime = (float)glfwGetTime();
+    // Add a state variable to track which tutorial message is being shown
+    int tutorialMessageStep = 0;
+    bool tutorialMessageInitialized = false;
     while (!glfwWindowShouldClose(window))
     {
         // Calculate delta time
@@ -1893,17 +2027,23 @@ int main()
         float buttonScale = std::min(scaleX, scaleY);
 
         // Select background and waypoints based on current screen
-        gl2d::Texture& currentBg =
-            (selectedMap == MapType::DESERT) ? backgroundDesertTexture :
-            (selectedMap == MapType::SNOW) ? backgroundSnowTexture :
-            backgroundTexture;
+        gl2d::Texture &currentBg =
+            (selectedMap == MapType::DESERT) ? backgroundDesertTexture : (selectedMap == MapType::SNOW) ? backgroundSnowTexture
+            : (selectedMap == MapType::TUTORIAL) ? backgroundTexture // Use background.png for tutorial
+                                                                                                        : backgroundTexture;
         std::vector<Point> currentWaypoints =
-            (selectedMap == MapType::DESERT) ? desertWaypoints :
-            (selectedMap == MapType::SNOW) ? snowWaypoints :
-            waypoints;
-        auto scaledWaypoints = [&]() {
+            (selectedMap == MapType::DESERT) ? desertWaypoints : (selectedMap == MapType::SNOW) ? snowWaypoints
+            : (selectedMap == MapType::TUTORIAL) ? waypoints // Use default waypoints for tutorial for now
+                                                                                                : waypoints;
+        // Force tutorial difficulty to easy if tutorial map is selected
+        if (selectedMap == MapType::TUTORIAL) {
+            selectedDifficulty = Difficulty::EASY;
+        }
+        auto scaledWaypoints = [&]()
+        {
             std::vector<Point> scaled;
-            for (const auto &wp : currentWaypoints) {
+            for (const auto &wp : currentWaypoints)
+            {
                 scaled.emplace_back(wp.x * scaleX, wp.y * scaleY);
             }
             return scaled;
@@ -1912,16 +2052,16 @@ int main()
 
         // Update menu button rectangles for scaling
         Rectangle scaledPlayButton = playButton;
-        Rectangle scaledOptionsButton = optionsButton;
+        Rectangle scaledTutorialButton = tutorialButton;
         Rectangle scaledExitButton = exitButton;
         scaledPlayButton.x *= scaleX;
         scaledPlayButton.y *= scaleY;
         scaledPlayButton.w *= scaleX;
         scaledPlayButton.h *= scaleY;
-        scaledOptionsButton.x *= scaleX;
-        scaledOptionsButton.y *= scaleY;
-        scaledOptionsButton.w *= scaleX;
-        scaledOptionsButton.h *= scaleY;
+        scaledTutorialButton.x *= scaleX;
+        scaledTutorialButton.y *= scaleY;
+        scaledTutorialButton.w *= scaleX;
+        scaledTutorialButton.h *= scaleY;
         scaledExitButton.x *= scaleX;
         scaledExitButton.y *= scaleY;
         scaledExitButton.w *= scaleX;
@@ -1930,9 +2070,83 @@ int main()
         // Handle input
         processInput(window);
 
+        // Tutorial message logic for tutorial map only
+        if (selectedMap == MapType::TUTORIAL && currentScreen == GameScreen::GAME) {
+            static bool tutorialMessageInitialized = false;
+            static float tutorialMessageInitTimer = 0.0f;
+            if (!tutorialMessageInitialized) {
+                tutorialMessageInitTimer += deltaTime;
+                if (tutorialMessageInitTimer >= 1.5f) {
+                    tutorialMessageStep = 1;
+                    showingTutorialMessage = true;
+                    tutorialMessageText = "Between every round \nthere is a five second window \nwhere the enemies \ndont come at you";
+                    tutorialMessageInitialized = true;
+                    // Reset tower unlocks for tutorial
+                    for (int i = 0; i < 6; ++i) tutorialTowerUnlocked[i] = (i == 0);
+                    tutorialLastRound = 0;
+                }
+            }
+            // Show the 'You can click on a tower...' message 1 second after the first round actually starts
+            static bool round1Started = false;
+            static float round1MessageTimer = 0.0f;
+            if (currentRound == 1 && isRoundActive && !round1Started) {
+                round1MessageTimer += deltaTime;
+                if (round1MessageTimer >= 1.0f && !showingTutorialMessage) {
+                    showingTutorialMessage = true;
+                    tutorialMessageText = "You can click on a tower \nat right to select it \nand then click \nsomewhere on the map \nto place it";
+                    round1Started = true;
+                }
+            } else if (currentRound != 1 || !isRoundActive) {
+                round1MessageTimer = 0.0f;
+            }
+            // Unlock a new tower each round (but not if round 1 message is showing)
+            if (currentRound > tutorialLastRound && (!showingTutorialMessage || currentRound != 1)) {
+                int unlockIndex = currentRound - 1; // Apple=0 at start, Carrot=1 at round 2, etc.
+                if (unlockIndex < 6 && !tutorialTowerUnlocked[unlockIndex]) {
+                    tutorialTowerUnlocked[unlockIndex] = true;
+                    // Don't show message immediately, wait for next frame
+                    tutorialLastRound = currentRound;
+                }
+            }
+            // Show unlock messages 1 second after round starts
+            static float unlockMessageTimer = 0.0f;
+            static int pendingUnlockRound = -1;
+            if (currentRound > tutorialLastRound && !showingTutorialMessage) {
+                pendingUnlockRound = currentRound;
+                tutorialLastRound = currentRound;
+            }
+            if (pendingUnlockRound > 0 && isRoundActive && !showingTutorialMessage) {
+                unlockMessageTimer += deltaTime;
+                if (unlockMessageTimer >= 1.0f) {
+                    int unlockIndex = pendingUnlockRound - 1;
+                    if (unlockIndex < 6 && tutorialTowerUnlocked[unlockIndex]) {
+                        showingTutorialMessage = true;
+                        tutorialMessageText = getTowerExplanation(static_cast<TowerType>(unlockIndex + 1));
+                    }
+                    pendingUnlockRound = -1;
+                    unlockMessageTimer = 0.0f;
+                }
+            } else if (pendingUnlockRound <= 0 || !isRoundActive) {
+                unlockMessageTimer = 0.0f;
+            }
+        }
+        // If a tutorial message is being shown, pause game updates and only show the message
+        if (showingTutorialMessage)
+        {
+            showTutorialMessage(tutorialMessageText, renderer, w, h, scaleX, scaleY);
+            renderer.flush();
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            if (mouseJustPressed) {
+                showingTutorialMessage = false;
+                mouseJustPressed = false;
+            }
+            continue;
+        }
         // MAIN MENU SCREEN
         if (currentScreen == GameScreen::MAIN_MENU)
         {
+            // Clear screen
             renderer.clearScreen({0.1, 0.2, 0.6, 1});
             // Draw title with dynamic scaling
             std::string title = "TOWER DEFENSE";
@@ -1952,10 +2166,10 @@ int main()
                 drawText(renderer, label, textX, textY, textSize, 2.0f, 1.0f);
             };
             bool playHovered = isPointInRect((float)mouseX, (float)mouseY, scaledPlayButton);
-            bool optionsHovered = isPointInRect((float)mouseX, (float)mouseY, scaledOptionsButton);
+            bool tutorialHovered = isPointInRect((float)mouseX, (float)mouseY, scaledTutorialButton);
             bool exitHovered = isPointInRect((float)mouseX, (float)mouseY, scaledExitButton);
             drawMenuButton(scaledPlayButton, "PLAY", playHovered);
-            drawMenuButton(scaledOptionsButton, "OPTIONS", optionsHovered);
+            drawMenuButton(scaledTutorialButton, "TUTORIAL", tutorialHovered);
             drawMenuButton(scaledExitButton, "EXIT", exitHovered);
             renderer.flush();
             // Handle button clicks
@@ -1965,9 +2179,11 @@ int main()
                 {
                     currentScreen = GameScreen::MAP_SELECT;
                 }
-                else if (optionsHovered)
+                else if (tutorialHovered)
                 {
-                    currentScreen = GameScreen::OPTIONS;
+                    selectedMap = MapType::TUTORIAL;
+                    selectedDifficulty = Difficulty::EASY;
+                    currentScreen = GameScreen::GAME;
                 }
                 else if (exitHovered)
                 {
@@ -1980,9 +2196,110 @@ int main()
             glfwPollEvents();
             continue;
         }
+        // TUTORIAL SCREEN
+        if (currentScreen == GameScreen::TUTORIAL)
+        {
+            renderer.clearScreen({0.1, 0.2, 0.6, 1});
+            float tutW = 500 * scaleX;
+            float tutH = 350 * scaleY;
+            float tutX = (w - tutW) / 2.0f;
+            float tutY = (h - tutH) / 2.0f;
+            renderer.renderRectangle({tutX, tutY, tutW, tutH}, {0.15f, 0.15f, 0.15f, 0.95f});
+            std::string tutText;
+            std::string btnText = "NEXT";
+            switch (tutorialStep) {
+                case TutorialStep::INTRO:
+                    tutText = "Welcome to Tower Defense! This tutorial will guide you.";
+                    break;
+                case TutorialStep::MOVE_MOUSE:
+                    tutText = "Move your mouse around. The placement tower follows your cursor.";
+                    if (fabs(mouseX - w/2) > 50 || fabs(mouseY - h/2) > 50) {
+                        btnText = "NEXT";
+                    } else {
+                        btnText = "(Move mouse to enable)";
+                    }
+                    break;
+                case TutorialStep::SELECT_TOWER:
+                    tutText = "Select a tower by clicking a button or pressing 1-6.";
+                    if (placementTower.type != TowerType::NONE) {
+                        btnText = "NEXT";
+                    } else {
+                        btnText = "(Select a tower)";
+                    }
+                    break;
+                case TutorialStep::PLACE_TOWER:
+                    tutText = "Place your selected tower on the map by clicking.";
+                    if (placementTower.type == TowerType::NONE) {
+                        btnText = "NEXT";
+                    } else {
+                        btnText = "(Place a tower)";
+                    }
+                    break;
+                case TutorialStep::START_ROUND:
+                    tutText = "Start the round by waiting for the countdown.";
+                    btnText = "NEXT";
+                    break;
+                case TutorialStep::FINISH:
+                    tutText = "Tutorial complete! Good luck!";
+                    btnText = "FINISH";
+                    break;
+            }
+            // Draw tutorial text
+            float tutTextSize = 28.0f * scaleY;
+            drawText(renderer, tutText, tutX + 40 * scaleX, tutY + 60 * scaleY, tutTextSize, 2.0f, 1.0f);
+            // Draw next/finish button
+            float btnW = 160 * scaleX, btnH = 50 * scaleY;
+            float btnX = tutX + tutW/2 - btnW/2, btnY = tutY + tutH - btnH - 30 * scaleY;
+            Rectangle nextBtn(btnX, btnY, btnW, btnH);
+            bool btnHovered = isPointInRect((float)mouseX, (float)mouseY, nextBtn);
+            Color btnColor = btnHovered ? Color(0.3f, 0.5f, 0.3f, 1.0f) : Color(0.2f, 0.2f, 0.2f, 1.0f);
+            renderer.renderRectangle({btnX, btnY, btnW, btnH}, {btnColor.r, btnColor.g, btnColor.b, btnColor.a});
+            float btnTextSize = 24.0f * scaleY;
+            float btnTextX = btnX + (btnW - btnText.length() * btnTextSize * 0.7f) / 2.0f;
+            float btnTextY = btnY + (btnH - btnTextSize) / 2.0f;
+            drawText(renderer, btnText, btnTextX, btnTextY, btnTextSize, 2.0f, 1.0f);
+            renderer.flush();
+            // Handle tutorial step logic
+            if (mouseJustPressed && btnHovered) {
+                switch (tutorialStep) {
+                    case TutorialStep::INTRO:
+                        tutorialStep = TutorialStep::MOVE_MOUSE;
+                        break;
+                    case TutorialStep::MOVE_MOUSE:
+                        if (fabs(mouseX - w/2) > 50 || fabs(mouseY - h/2) > 50)
+                            tutorialStep = TutorialStep::SELECT_TOWER;
+                        break;
+                    case TutorialStep::SELECT_TOWER:
+                        if (placementTower.type != TowerType::NONE)
+                            tutorialStep = TutorialStep::PLACE_TOWER;
+                        break;
+                    case TutorialStep::PLACE_TOWER:
+                        if (placementTower.type == TowerType::NONE)
+                            tutorialStep = TutorialStep::START_ROUND;
+                        break;
+                    case TutorialStep::START_ROUND:
+                        tutorialStep = TutorialStep::FINISH;
+                        break;
+                    case TutorialStep::FINISH:
+                        markTutorialComplete();
+                        tutorialCompleted = true;
+                        currentScreen = GameScreen::MAP_SELECT;
+                        break;
+                }
+                mouseJustPressed = false;
+            }
+            // ESC to skip tutorial
+            if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+                currentScreen = GameScreen::MAP_SELECT;
+            }
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            continue;
+        }
         // MAP SELECTION SCREEN
         if (currentScreen == GameScreen::MAP_SELECT)
         {
+            // Clear screen
             renderer.clearScreen({0.1, 0.2, 0.6, 1});
             std::string selectText = "SELECT MAP";
             float selectSize = 48.0f * scaleY;
@@ -2009,15 +2326,19 @@ int main()
             bool map3Hovered = isPointInRect((float)mouseX, (float)mouseY, scaledMap3);
             renderer.renderRectangle({scaledMap1.x, scaledMap1.y, scaledMap1.w, scaledMap1.h}, backgroundTexture, {1, 1, 1, map1Hovered ? 1.0f : 0.8f});
             // Desert map button: gray overlay if locked
-            if (desertMapUnlocked) {
+            if (desertMapUnlocked)
+            {
                 renderer.renderRectangle({scaledMap2.x, scaledMap2.y, scaledMap2.w, scaledMap2.h}, backgroundDesertTexture, {1, 1, 1, map2Hovered ? 1.0f : 0.8f});
-            } else {
+            }
+            else
+            {
                 renderer.renderRectangle({scaledMap2.x, scaledMap2.y, scaledMap2.w, scaledMap2.h}, backgroundDesertTexture, {0.5f, 0.5f, 0.5f, 0.7f});
                 // Draw lock.png icon centered
                 float lockSize = 48 * scaleY;
                 float lockX = scaledMap2.x + (scaledMap2.w - lockSize) / 2.0f;
                 float lockY = scaledMap2.y + (scaledMap2.h - lockSize) / 2.0f;
-                if (lockTexture.id != 0) {
+                if (lockTexture.id != 0)
+                {
                     renderer.renderRectangle({lockX, lockY, lockSize, lockSize}, lockTexture, {1, 1, 1, 1});
                 }
             }
@@ -2055,9 +2376,10 @@ int main()
         // DIFFICULTY SELECTION SCREEN
         if (currentScreen == GameScreen::DIFFICULTY_SELECT)
         {
+            // Clear screen
             renderer.clearScreen({0.1, 0.2, 0.6, 1});
             std::string diffText = "SELECT DIFFICULTY";
-            float diffSize = 32.0f * scaleY; // Smaller text
+            float diffSize = 32.0f * scaleY;                                                // Smaller text
             float diffX = (w - diffText.length() * (diffSize + 2.0f)) / 2.0f - 60 * scaleX; // Move text left
             float diffY = 60 * scaleY;
             drawText(renderer, diffText, diffX, diffY, diffSize, 2.0f, 1.0f);
@@ -2083,7 +2405,8 @@ int main()
             bool hardHovered = isPointInRect((float)mouseX, (float)mouseY, hardBtn);
             bool endlessHovered = isPointInRect((float)mouseX, (float)mouseY, endlessBtn);
 
-            auto drawDiffBtn = [&](const Rectangle &rect, const char *label, bool hovered) {
+            auto drawDiffBtn = [&](const Rectangle &rect, const char *label, bool hovered)
+            {
                 Color color = hovered ? Color(0.3f, 0.5f, 0.3f, 1.0f) : Color(0.2f, 0.2f, 0.2f, 1.0f);
                 renderer.renderRectangle({rect.x, rect.y, rect.w, rect.h}, {color.r, color.g, color.b, color.a});
                 float textSize = 22.0f * scaleY; // Smaller button text
@@ -2137,6 +2460,7 @@ int main()
         // OPTIONS SCREEN (placeholder)
         if (currentScreen == GameScreen::OPTIONS)
         {
+            // Clear screen
             renderer.clearScreen({0.1, 0.2, 0.6, 1});
             std::string opt = "OPTIONS (not implemented)";
             float optSize = 40.0f * scaleY;
@@ -2165,24 +2489,24 @@ int main()
             glfwPollEvents();
             continue;
         }
-        
+
         // PAUSE MENU SCREEN
         if (currentScreen == GameScreen::PAUSE_MENU)
         {
-            // Draw the game in the background (frozen)
+            // Clear screen
             renderer.clearScreen({0.1, 0.2, 0.6, 1});
-            
+
             // Draw background
             renderer.renderRectangle({0 * scaleX, 0 * scaleY, GAME_WIDTH * scaleX, HEIGHT * scaleY}, currentBg, {1, 1, 1, 1});
-            
+
             // Draw UI panel background
             renderer.renderRectangle(
                 {(float)GAME_WIDTH * scaleX, 0 * scaleY, (float)PANEL_WIDTH * scaleX, (float)HEIGHT * scaleY},
                 {UI_BACKGROUND.r, UI_BACKGROUND.g, UI_BACKGROUND.b, UI_BACKGROUND.a});
-            
+
             // Draw bean count
             drawNumber(renderer, beanCount, (GAME_WIDTH - 180) * scaleX, 15 * scaleY, 32.0f * scaleY);
-            
+
             // Draw round information
             float roundTextX = 70 * scaleX;
             float roundTextY = 15 * scaleY;
@@ -2200,7 +2524,7 @@ int main()
             {
                 drawDigit(renderer, roundStr[i] - '0', roundTextX + i * (roundDigitSize * 1.2f), roundTextY, roundDigitSize);
             }
-            
+
             // Draw lives
             float livesX = 200 * scaleX;
             float livesY = 15 * scaleY;
@@ -2210,7 +2534,7 @@ int main()
                     {livesX + i * 30 * scaleX, livesY, 20 * scaleX, 20 * scaleY * (scaleY * 0.9f)},
                     heartTexture, {1.0f, 1.0f, 1.0f, 1.0f});
             }
-            
+
             // Draw towers (frozen)
             for (const auto &tower : towers)
             {
@@ -2234,10 +2558,10 @@ int main()
                 }
                 else if (tower.type == TowerType::CARROT && carrotTowerTexture.id != 0)
                 {
-                        renderer.renderRectangle(
+                    renderer.renderRectangle(
                         {drawX - drawSize / 2, drawY - drawSize / 2, drawSize, drawSize},
                         carrotTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                    }
+                }
                 else if (tower.type == TowerType::APPLE && appleTowerTexture.id != 0)
                 {
                     renderer.renderRectangle(
@@ -2269,7 +2593,7 @@ int main()
                         {towerColor.r, towerColor.g, towerColor.b, towerColor.a});
                 }
             }
-            
+
             // Draw enemies (frozen)
             for (const auto &enemy : enemies)
             {
@@ -2298,7 +2622,7 @@ int main()
                         {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a});
                 }
             }
-            
+
             // Draw projectiles (frozen)
             for (const auto &proj : projectiles)
             {
@@ -2310,12 +2634,12 @@ int main()
                         {0.0f, 0.0f, 0.0f, 1.0f});
                 }
             }
-            
+
             // Draw semi-transparent overlay
             renderer.renderRectangle(
                 {0, 0, (float)w, (float)h},
                 {0.0f, 0.0f, 0.0f, 0.5f});
-            
+
             // Draw pause menu title
             std::string pauseTitle = "PAUSED";
             float titleSize = 48.0f * scaleY;
@@ -2323,12 +2647,12 @@ int main()
             float titleX = (w - titleWidth) / 2.0f;
             float titleY = 150 * scaleY;
             drawText(renderer, pauseTitle, titleX, titleY, titleSize, 2.0f, 1.0f);
-            
+
             // Create pause menu buttons
             Rectangle resumeBtn(WIDTH / 2 - 100, HEIGHT / 2 - 80, 200, 60);
             Rectangle optionsBtn(WIDTH / 2 - 100, HEIGHT / 2, 200, 60);
             Rectangle mainMenuBtn(WIDTH / 2 - 100, HEIGHT / 2 + 80, 200, 60);
-            
+
             // Scale buttons
             resumeBtn.x *= scaleX;
             resumeBtn.y *= scaleY;
@@ -2342,12 +2666,12 @@ int main()
             mainMenuBtn.y *= scaleY;
             mainMenuBtn.w *= scaleX;
             mainMenuBtn.h *= scaleY;
-            
+
             // Check hover states
             bool resumeHovered = isPointInRect((float)mouseX, (float)mouseY, resumeBtn);
             bool optionsHovered = isPointInRect((float)mouseX, (float)mouseY, optionsBtn);
             bool mainMenuHovered = isPointInRect((float)mouseX, (float)mouseY, mainMenuBtn);
-            
+
             // Draw buttons
             auto drawPauseButton = [&](const Rectangle &rect, const char *label, bool hovered)
             {
@@ -2358,13 +2682,13 @@ int main()
                 float textY = rect.y + (rect.h - textSize) / 2.0f;
                 drawText(renderer, label, textX, textY, textSize, 2.0f, 1.0f);
             };
-            
+
             drawPauseButton(resumeBtn, "RESUME", resumeHovered);
             drawPauseButton(optionsBtn, "OPTIONS", optionsHovered);
             drawPauseButton(mainMenuBtn, "MAIN MENU", mainMenuHovered);
-            
+
             renderer.flush();
-            
+
             // Handle button clicks
             if (mouseJustPressed)
             {
@@ -2383,10 +2707,32 @@ int main()
                 }
                 mouseJustPressed = false;
             }
-            
+
             glfwSwapBuffers(window);
             glfwPollEvents();
             continue;
+        }
+
+        // Update tower button hover states and handle clicks BEFORE main game logic
+        if (!isGameOver)
+        {
+            for (auto &button : towerButtons)
+            {
+                button.isHovered = isPointInRect((float)mouseX, (float)mouseY, button.rect);
+                if (button.isHovered && mouseJustPressed && !towerMenu.isOpen)
+                { // Only allow tower selection if menu is not open
+                    // If clicking the same tower type that's already selected, deselect it
+                    if (placementTower.type == button.type)
+                    {
+                        placementTower.setType(TowerType::NONE);
+                    }
+                    else
+                    {
+                        placementTower.setType(button.type);
+                    }
+                    mouseJustPressed = false; // Consume the click
+                }
+            }
         }
 
         // Only update game elements if we're in the game screen
@@ -2397,17 +2743,17 @@ int main()
             float mouseGameX = mouseX / scaleX;
             float mouseGameY = mouseY / scaleY;
             placementTower.pos = Point(mouseGameX, mouseGameY);
-            
+
             // Place tower when mouse clicked (only on initial press)
-            if ((mouseLeftPressed && mouseJustPressed) && !isGameOver)
+            if (mouseJustPressed && !isGameOver)
             {
                 Point clickPos(mouseGameX, mouseGameY);
-                
+
                 // Check if clicked on tower menu buttons when menu is open
                 if (towerMenu.isOpen)
                 {
                     bool buttonClicked = false;
-                    
+
                     if (isPointInRect((float)mouseX, (float)mouseY, towerMenu.closeButton))
                     {
                         towerMenu.close();
@@ -2477,48 +2823,48 @@ int main()
                     {
                         // Calculate sell value (50% of current cost including upgrades)
                         int baseCost = getTowerCost(towerMenu.selectedTower->type);
-                        
+
                         // Add value of each upgrade (50% of upgrade costs)
                         int damageUpgradeValue = 0;
                         int attackSpeedUpgradeValue = 0;
                         int rangeUpgradeValue = 0;
-                        
+
                         // Calculate value of damage upgrades
                         for (int i = 0; i < towerMenu.selectedTower->damageUpgradeLevel; i++)
                         {
                             int upgradeCost = towerMenu.selectedTower->getUpgradeCost(towerMenu.selectedTower->type, i);
                             damageUpgradeValue += upgradeCost;
                         }
-                        
+
                         // Calculate value of attack speed upgrades
                         for (int i = 0; i < towerMenu.selectedTower->attackSpeedUpgradeLevel; i++)
                         {
                             int upgradeCost = towerMenu.selectedTower->getUpgradeCost(towerMenu.selectedTower->type, i);
                             attackSpeedUpgradeValue += upgradeCost;
                         }
-                        
+
                         // Calculate value of range upgrades
                         for (int i = 0; i < towerMenu.selectedTower->rangeUpgradeLevel; i++)
                         {
                             int upgradeCost = towerMenu.selectedTower->getUpgradeCost(towerMenu.selectedTower->type, i);
                             rangeUpgradeValue += upgradeCost;
                         }
-                        
+
                         // Total upgrade value
                         int upgradeValue = damageUpgradeValue + attackSpeedUpgradeValue + rangeUpgradeValue;
-                        
+
                         // Final sell value is 50% of (base cost + upgrades)
                         int sellValue = (baseCost + upgradeValue) / 2;
                         beanCount += sellValue;
-                        
+
                         // Remove the tower
                         towers.erase(std::remove_if(towers.begin(), towers.end(),
                                                     [selectedTower = towerMenu.selectedTower](const Tower &tower)
                                                     {
-                                return &tower == selectedTower;
+                                                        return &tower == selectedTower;
                                                     }),
                                      towers.end());
-                            
+
                         // Decrement tower count
                         switch (towerMenu.selectedTower->type)
                         {
@@ -2543,14 +2889,14 @@ int main()
                         default:
                             break;
                         }
-                        
+
                         std::cout << "Sold tower for " << sellValue << " beans. Total beans: " << beanCount << std::endl;
                         towerMenu.close();
                         buttonClicked = true;
                     }
-                    
+
                     // Only check for tower selection if no button was clicked
-                    if (!buttonClicked && mouseX < GAME_WIDTH)
+                    if (!buttonClicked && mouseGameX < GAME_WIDTH)
                     {
                         for (auto &tower : towers)
                         {
@@ -2558,7 +2904,7 @@ int main()
                             float drawX = tower.pos.x * scaleX;
                             float drawY = tower.pos.y * scaleY;
                             float drawSize = TOWER_SIZE * uniformScale;
-                            if (distance(Point(mouseX, mouseY), Point(drawX, drawY)) < drawSize / 2)
+                            if (distance(Point(mouseGameX, mouseGameY), tower.pos) < TOWER_SIZE / 2)
                             {
                                 towerMenu.open(&tower);
                                 break;
@@ -2567,7 +2913,7 @@ int main()
                     }
                 }
                 // Check if clicked on an existing tower
-                else if (mouseX < GAME_WIDTH)
+                else if (mouseGameX < GAME_WIDTH)
                 { // Only check in game area
                     bool towerClicked = false;
                     for (auto &tower : towers)
@@ -2576,20 +2922,20 @@ int main()
                         float drawX = tower.pos.x * scaleX;
                         float drawY = tower.pos.y * scaleY;
                         float drawSize = TOWER_SIZE * uniformScale;
-                        if (distance(Point(mouseX, mouseY), Point(drawX, drawY)) < drawSize / 2)
+                        if (distance(Point(mouseGameX, mouseGameY), tower.pos) < TOWER_SIZE / 2)
                         {
                             towerMenu.open(&tower);
                             towerClicked = true;
                             break;
                         }
                     }
-                    
+
                     // Only try to place if no tower was clicked and a tower type is selected
                     if (!towerClicked && placementTower.type != TowerType::NONE)
                     {
                         // Check placement validity
                         bool canPlace = true;
-                        
+
                         // Don't allow placing overlapping with path or water
                         if (!canPlaceTower(clickPos, TOWER_SIZE, placementTower.type, scaledWaypoints))
                         {
@@ -2603,18 +2949,18 @@ int main()
                                 std::cout << "Cannot place tower on water or path!" << std::endl;
                             }
                         }
-                        
+
                         // Don't allow placing towers on top of each other
                         for (const auto &tower : towers)
                         {
-                            if (distance(tower.pos, placementTower.pos) < TOWER_SIZE)
+                            if (distance(tower.pos, clickPos) < TOWER_SIZE)
                             {
                                 canPlace = false;
                                 std::cout << "Cannot place tower on another tower!" << std::endl;
                                 break;
                             }
                         }
-                        
+
                         // Check if player has enough beans to buy the tower
                         int towerCost = getTowerCost(placementTower.type);
                         if (beanCount < towerCost)
@@ -2622,53 +2968,48 @@ int main()
                             canPlace = false;
                             std::cout << "Not enough beans to buy this tower! Need " << towerCost << " beans." << std::endl;
                         }
-                        
+
                         if (canPlace)
                         {
-                            Tower newTower((float)mouseX, (float)mouseY);
+                            Tower newTower((float)mouseGameX, (float)mouseGameY);
                             newTower.setType(placementTower.type); // Copy the selected tower type
                             towers.push_back(newTower);
-                            
+
                             // Deduct tower cost from bean count
                             beanCount -= towerCost;
-                            
+
                             // Increment tower count for that type
                             switch (newTower.type)
                             {
-                                case TowerType::APPLE:
-                                    appleTowerCount++;
-                                    break;
-                                case TowerType::CARROT:
-                                    carrotTowerCount++;
-                                    break;
-                                case TowerType::POTATO:
-                                    potatoTowerCount++;
-                                    break;
-                                case TowerType::PINEAPPLE:
-                                    pineappleTowerCount++;
-                                    break;
-                                case TowerType::BANANA_PEEL:
-                                    bananaPeelTowerCount++;
-                                    break;
-                                case TowerType::CACTUS:
-                                    cactusTowerCount++;
-                                    break;
-                                default:
-                                    break;
+                            case TowerType::APPLE:
+                                appleTowerCount++;
+                                break;
+                            case TowerType::CARROT:
+                                carrotTowerCount++;
+                                break;
+                            case TowerType::POTATO:
+                                potatoTowerCount++;
+                                break;
+                            case TowerType::PINEAPPLE:
+                                pineappleTowerCount++;
+                                break;
+                            case TowerType::BANANA_PEEL:
+                                bananaPeelTowerCount++;
+                                break;
+                            case TowerType::CACTUS:
+                                cactusTowerCount++;
+                                break;
+                            default:
+                                break;
                             }
-                            
+
                             // Deselect tower after placement
                             placementTower.type = TowerType::NONE;
                         }
                     }
                 }
-                
+
                 // Reset mouseJustPressed regardless of whether placement was successful
-                mouseJustPressed = false;
-            }
-            else if (!mouseLeftPressed)
-            {
-                // Reset flag when mouse is released
                 mouseJustPressed = false;
             }
 
@@ -2689,9 +3030,12 @@ int main()
                     {
                         // Check for win condition before starting new round
                         int winRound = getWinRoundForDifficulty(selectedDifficulty);
-                        if (winRound > 0 && currentRound >= winRound) {
+                        if (winRound > 0 && currentRound >= winRound)
+                        {
                             isGameWon = true;
-                        } else {
+                        }
+                        else
+                        {
                             startNewRound(enemies, currentRound);
                             // Reset timer for next round - always 5 seconds
                             roundStartTimer = 5.0f; // Standard 5 second break between all rounds
@@ -2705,11 +3049,11 @@ int main()
                     {
                         enemySpawnTimer += deltaTime;
                         float spawnRate = 1.0f; // Fixed spawn rate of 1 enemy per second
-                        
+
                         if (enemySpawnTimer >= spawnRate)
                         {
                             enemySpawnTimer = 0.0f;
-                            
+
                             // Find inactive enemy to spawn
                             for (auto &enemy : enemies)
                             {
@@ -2718,7 +3062,7 @@ int main()
                                     enemy.isActive = true;
                                     enemy.currentWaypoint = 0;
                                     enemy.progress = 0.0f;
-                                    
+
                                     // Spawn boss as the last enemy of a boss round
                                     if (isBossRound(currentRound) && enemiesLeftInRound == 1)
                                     {
@@ -2732,7 +3076,7 @@ int main()
                                         float tankChance = getTankPercentage(currentRound);
                                         float ghostChance = getGhostPercentage(currentRound);
                                         float random = static_cast<float>(rand()) / RAND_MAX;
-                                        
+
                                         if (random < skeletonChance)
                                         {
                                             enemy.type = EnemyType::SKELETON;
@@ -2750,7 +3094,7 @@ int main()
                                             enemy.type = EnemyType::ZOMBIE;
                                         }
                                     }
-                                    
+
                                     enemy.setType(enemy.type);
                                     enemiesLeftInRound--;
                                     break;
@@ -2758,7 +3102,7 @@ int main()
                             }
                         }
                     }
-                    
+
                     // Check if round is complete
                     if (isRoundComplete(enemies))
                     {
@@ -2766,7 +3110,7 @@ int main()
                         // Give bonus beans for completing a round
                         int roundBonus = currentRound * 5;
                         beanCount += roundBonus;
-                        
+
                         // Regular round completion message
                         std::cout << "Round " << currentRound << " complete! Bonus beans: " << beanCount << std::endl;
                     }
@@ -2789,7 +3133,7 @@ int main()
                 if (!isGameOver)
                 {
                     tower.shootTimer += deltaTime;
-                    
+
                     // Only shooting towers need to find targets and shoot
                     if (tower.type != TowerType::BANANA_PEEL && tower.type != TowerType::CACTUS)
                     {
@@ -2830,32 +3174,32 @@ int main()
                     }
                 }
             }
-            
+
             // Update and check projectile collisions
             for (auto &proj : projectiles)
             {
                 if (!proj.active)
                     continue;
-                
+
                 proj.update(deltaTime);
-                
+
                 // Check for collisions with enemies
                 for (auto &enemy : enemies)
                 {
                     if (!enemy.isActive)
                         continue;
-                    
+
                     float enemySize = (enemy.type == EnemyType::BOSS) ? BOSS_SIZE : ENEMY_SIZE;
-                    
+
                     Point enemyPos = enemy.getPosition(currentWaypoints);
                     if (distance(proj.pos, enemyPos) < enemySize / 2)
                     {
                         // Hit! Deactivate projectile
                         proj.active = false;
-                        
+
                         // Apply damage to enemy
                         enemy.health -= proj.damage;
-                        
+
                         // Check if enemy is defeated
                         if (enemy.health <= 0)
                         {
@@ -2875,7 +3219,7 @@ int main()
                         break;
                     }
                 }
-                
+
                 // Deactivate projectiles that go too far off screen
                 if (proj.pos.x < -50 || proj.pos.x > WIDTH + 50 ||
                     proj.pos.y < -50 || proj.pos.y > HEIGHT + 50)
@@ -2883,12 +3227,12 @@ int main()
                     proj.active = false;
                 }
             }
-            
+
             // Remove used banana peels and empty cacti
             towers.erase(std::remove_if(towers.begin(), towers.end(),
                                         [](const Tower &tower)
                                         {
-                    return (tower.type == TowerType::BANANA_PEEL && tower.isUsed); 
+                                            return (tower.type == TowerType::BANANA_PEEL && tower.isUsed);
                                         }),
                          towers.end());
 
@@ -2899,71 +3243,48 @@ int main()
             }
         }
 
-        // Update tower button hover states
-        if (!isGameOver)
-        {
-            for (auto &button : towerButtons)
-            {
-                button.isHovered = isPointInRect((float)mouseX, (float)mouseY, button.rect);
-                if (button.isHovered && mouseLeftPressed && !towerMenu.isOpen)
-                { // Only allow tower selection if menu is not open
-                    // If clicking the same tower type that's already selected, deselect it
-                    if (placementTower.type == button.type)
-                    {
-                        placementTower.setType(TowerType::NONE);
-                    }
-                    else
-                    {
-                        placementTower.setType(button.type);
-                    }
-                    mouseLeftPressed = false; // Consume the click
-                }
-            }
-        }
-
-        // Clear screen
+        // Draw background
         renderer.clearScreen({0.1, 0.2, 0.6, 1});
-
         // Draw background
         renderer.renderRectangle({0 * scaleX, 0 * scaleY, GAME_WIDTH * scaleX, HEIGHT * scaleY}, currentBg, {1, 1, 1, 1});
-        
+
         // Draw UI panel background
         renderer.renderRectangle(
             {(float)GAME_WIDTH * scaleX, 0 * scaleY, (float)PANEL_WIDTH * scaleX, (float)HEIGHT * scaleY},
             {UI_BACKGROUND.r, UI_BACKGROUND.g, UI_BACKGROUND.b, UI_BACKGROUND.a});
-        
+
         // Draw bean count in top-right corner with larger size and better position
         drawNumber(renderer, beanCount, (GAME_WIDTH - 180) * scaleX, 15 * scaleY, 32.0f * scaleY); // Moved from -120 to -180 to accommodate larger numbers
-        
+
         // Draw round information in top-left corner
         float roundTextX = 70 * scaleX;
         float roundTextY = 15 * scaleY;
         float roundDigitSize = 24.0f * scaleY;
-        
+
         // Draw 'R' symbol using alphabet texture
         float rSize = 30.0f * scaleY;
         float rX = roundTextX - 50 * scaleX;
         float rY = roundTextY;
         drawText(renderer, "R", rX, rY, rSize);
-        
+
         // Draw round number with background
         std::string roundStr = std::to_string(currentRound);
         float bgWidth = roundDigitSize * 1.2f * roundStr.length() + 20 * scaleX;
-        
+
         renderer.renderRectangle(
             {roundTextX - 5 * scaleX, roundTextY - 5 * scaleY, bgWidth, roundDigitSize + 10 * scaleY},
             {0.0f, 0.0f, 0.0f, 0.5f});
-        
+
         // Draw each digit of the round number
         for (size_t i = 0; i < roundStr.length(); i++)
         {
             drawDigit(renderer, roundStr[i] - '0', roundTextX + i * (roundDigitSize * 1.2f), roundTextY, roundDigitSize);
         }
-        
+
         // Draw current lives
         float livesX = 200 * scaleX;
         float livesY = 15 * scaleY;
-        
+
         // Draw heart icon for lives
         if (!isGameOver)
         {
@@ -2974,7 +3295,7 @@ int main()
                     heartTexture, {1.0f, 1.0f, 1.0f, 1.0f});
             }
         }
-        
+
         // If game is over, show game over screen
         if (isGameOver)
         {
@@ -3015,7 +3336,8 @@ int main()
             if (mouseJustPressed)
             {
                 // Unlock desert map if player won on grass map
-                if (selectedMap == MapType::GRASS) {
+                if (selectedMap == MapType::GRASS)
+                {
                     desertMapUnlocked = true;
                 }
                 resetGame(enemies, towers, projectiles, beanCount);
@@ -3024,7 +3346,7 @@ int main()
                 mouseJustPressed = false;
             }
         }
-        
+
         // If we're between rounds, show countdown
         if (!isRoundActive && !isGameOver && currentScreen == GameScreen::GAME)
         {
@@ -3033,17 +3355,17 @@ int main()
             float countdownX = w / 2 - 30 * scaleX;
             float countdownY = 100 * scaleY;
             float countdownSize = 60.0f * scaleY;
-            
+
             // Draw large countdown number
             renderer.renderRectangle(
                 {countdownX - 10 * scaleX, countdownY - 10 * scaleY, countdownSize + 20 * scaleX, countdownSize + 20 * scaleY},
                 {0.0f, 0.0f, 0.0f, 0.7f});
-            
+
             for (size_t i = 0; i < countdownStr.length(); i++)
             {
                 drawDigit(renderer, countdownStr[i] - '0', countdownX + i * (countdownSize * 0.8f), countdownY, countdownSize);
             }
-            
+
             // Draw "NEXT ROUND" text using rectangles with dynamic scaling
             float textY = countdownY + countdownSize + 20 * scaleY;
             renderer.renderRectangle({w / 2 - 100 * scaleX, textY, 200 * scaleX, 5 * scaleY}, {1.0f, 1.0f, 1.0f, 1.0f});
@@ -3057,33 +3379,40 @@ int main()
             float buttonSpacing = 10 * scaleY;
             float totalButtonsHeight = towerButtons.size() * buttonH + (towerButtons.size() - 1) * buttonSpacing;
             float startY = (HEIGHT * scaleY - totalButtonsHeight) / 2.0f;
-            for (size_t i = 0; i < towerButtons.size(); ++i) {
+            for (size_t i = 0; i < towerButtons.size(); ++i)
+            {
                 towerButtons[i].rect.x = (GAME_WIDTH + 20) * scaleX;
                 towerButtons[i].rect.y = startY + i * (buttonH + buttonSpacing);
                 towerButtons[i].rect.w = buttonW;
                 towerButtons[i].rect.h = buttonH;
             }
-            for (const auto &button : towerButtons)
+            for (size_t i = 0; i < towerButtons.size(); ++i)
             {
+                const auto &button = towerButtons[i];
+                // Tutorial: lock buttons if not unlocked
+                bool unlocked = true;
+                if (selectedMap == MapType::TUTORIAL) {
+                    unlocked = tutorialTowerUnlocked[i];
+                }
                 // Draw button background
                 Color buttonColor = button.isHovered ? UI_SELECTED : UI_BACKGROUND;
                 if (placementTower.type == button.type)
                 {
                     buttonColor = {0.3f, 0.5f, 0.3f, 1.0f}; // Green tint for selected tower
                 }
-                
+                // If not unlocked, make button gray
+                if (!unlocked) {
+                    buttonColor = {0.3f, 0.3f, 0.3f, 1.0f};
+                }
                 // Check if player can afford this tower
                 bool canAfford = beanCount >= getTowerCost(button.type);
-                
                 // If can't afford, make button appear darker
-                if (!canAfford)
+                if (!canAfford && unlocked)
                 {
                     buttonColor.r *= 0.7f;
                     buttonColor.g *= 0.7f;
                     buttonColor.b *= 0.7f;
                 }
-                
-                // Use the same conservative scaling for all visual elements
                 float bx = button.rect.x;
                 float by = button.rect.y;
                 float bw = button.rect.w;
@@ -3091,22 +3420,16 @@ int main()
                 renderer.renderRectangle(
                     {bx, by, bw, bh},
                     {buttonColor.r, buttonColor.g, buttonColor.b, buttonColor.a});
-                
                 // Draw tower preview with its specific color or texture
                 float towerSize = 32.0f * buttonScale;
                 float towerX = bx + bw / 2 - towerSize / 2;
                 float towerY = by + 10 * buttonScale;
                 Color previewColor = getTowerColor(button.type);
-                
-                // Make the tower preview darker if can't afford
-                if (!canAfford)
-                {
-                    previewColor.r *= 0.7f;
-                    previewColor.g *= 0.7f;
-                    previewColor.b *= 0.7f;
+                if (!unlocked) {
+                    previewColor = {0.3f, 0.3f, 0.3f, 1.0f};
                 }
-                
-                // Use the correct texture for each tower type if available
+                // Draw the correct texture for each tower type if available and unlocked
+                if (unlocked) {
                 if (button.type == TowerType::CARROT && carrotTowerTexture.id != 0)
                 {
                     renderer.renderRectangle(
@@ -3149,26 +3472,30 @@ int main()
                         {towerX, towerY, towerSize, towerSize},
                         {previewColor.r, previewColor.g, previewColor.b, previewColor.a});
                 }
-                
-                // Draw cost indicator
+                } else {
+                    // Locked: just draw a gray box
+                    renderer.renderRectangle(
+                        {towerX, towerY, towerSize, towerSize},
+                        {previewColor.r, previewColor.g, previewColor.b, previewColor.a});
+                }
+                // ... existing code for drawing tower preview ...
+                // Draw cost indicator only if unlocked
+                if (unlocked) {
                 int cost = getTowerCost(button.type);
                 std::string costStr = std::to_string(cost);
                 float digitSize = 16.0f * buttonScale;
                 float costX = bx + 10 * buttonScale;
                 float costY = by + bh - 20 * buttonScale;
-                
-                // Draw bean icon
                 renderer.renderRectangle(
                     {costX, costY, 10.0f * buttonScale, 10.0f * buttonScale},
                     {0.6f, 0.4f, 0.2f, 1.0f});
-                
-                // Draw digits for cost with increased spacing
-                for (size_t i = 0; i < costStr.length(); i++)
+                    for (size_t j = 0; j < costStr.length(); j++)
                 {
-                    drawDigit(renderer, costStr[i] - '0', costX + 15 * buttonScale + i * (digitSize * 1.2f), costY - 5 * buttonScale, digitSize);
+                        drawDigit(renderer, costStr[j] - '0', costX + 15 * buttonScale + j * (digitSize * 1.2f), costY - 5 * buttonScale, digitSize);
                 }
-                
-                // Draw tower count indicator
+                }
+                // Draw tower count indicator only if unlocked
+                if (unlocked) {
                 int towerCount = 0;
                 switch (button.type)
                 {
@@ -3191,28 +3518,33 @@ int main()
                     towerCount = cactusTowerCount;
                     break;
                 }
-
                 if (towerCount > 0)
                 {
                     std::string countStr = "x" + std::to_string(towerCount);
                     float countX = bx + bw - 30 * buttonScale;
                     float countY = by + 15 * buttonScale;
-                    
                     renderer.renderRectangle(
                         {countX - 5 * buttonScale, countY - 5 * buttonScale, 30 * buttonScale, 20 * buttonScale},
                         {0.0f, 0.0f, 0.0f, 0.5f});
-                    
                     float smallDigitSize = 14.0f * buttonScale;
-                    for (size_t i = 0; i < countStr.length(); i++)
+                        for (size_t j = 0; j < countStr.length(); j++)
                     {
-                        if (countStr[i] == 'x')
+                            if (countStr[j] == 'x')
                             continue;
-                        drawDigit(renderer, countStr[i] - '0', countX + 10 * buttonScale + (i - 1) * (smallDigitSize * 0.8f), countY, smallDigitSize);
+                            drawDigit(renderer, countStr[j] - '0', countX + 10 * buttonScale + (j - 1) * (smallDigitSize * 0.8f), countY, smallDigitSize);
                     }
+                    }
+                }
+                // Draw lock icon if not unlocked
+                if (!unlocked && lockTexture.id != 0) {
+                    float lockSize = 24 * buttonScale;
+                    float lockX = bx + bw / 2 - lockSize / 2;
+                    float lockY = by + bh / 2 - lockSize / 2;
+                    renderer.renderRectangle({lockX, lockY, lockSize, lockSize}, lockTexture, {1, 1, 1, 1});
                 }
             }
         }
-        
+
         // Draw tower menu if open
         if (towerMenu.isOpen)
         {
@@ -3243,7 +3575,7 @@ int main()
             renderer.renderRectangle(
                 {panelX, 0, panelW, panelH},
                 {UI_BACKGROUND.r, UI_BACKGROUND.g, UI_BACKGROUND.b, 1.0f});
-            
+
             // Draw selected tower info
             if (towerMenu.selectedTower)
             {
@@ -3259,59 +3591,67 @@ int main()
 
                 // Draw the correct texture for the tower type if available
                 bool drewTexture = false;
-                switch (towerMenu.selectedTower->type) {
-                    case TowerType::CARROT:
-                        if (carrotTowerTexture.id != 0) {
-                            renderer.renderRectangle(
-                                {previewX, previewY, previewSize, previewSize},
-                                carrotTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                            drewTexture = true;
-                        }
-                        break;
-                    case TowerType::APPLE:
-                        if (appleTowerTexture.id != 0) {
-                            renderer.renderRectangle(
-                                {previewX, previewY, previewSize, previewSize},
-                                appleTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                            drewTexture = true;
-                        }
-                        break;
-                    case TowerType::BANANA_PEEL:
-                        if (bananaPeelTexture.id != 0) {
-                            renderer.renderRectangle(
-                                {previewX, previewY, previewSize, previewSize},
-                                bananaPeelTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                            drewTexture = true;
-                        }
-                        break;
-                    case TowerType::CACTUS:
-                        if (cactusTexture.id != 0) {
-                            renderer.renderRectangle(
-                                {previewX, previewY, previewSize, previewSize},
-                                cactusTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                            drewTexture = true;
-                        }
-                        break;
-                    case TowerType::PINEAPPLE:
-                        if (pineappleTowerTexture.id != 0) {
-                            renderer.renderRectangle(
-                                {previewX, previewY, previewSize, previewSize},
-                                pineappleTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                            drewTexture = true;
-                        }
-                        break;
-                    case TowerType::POTATO:
-                        if (potatoTowerTexture.id != 0) {
-                            renderer.renderRectangle(
-                                {previewX, previewY, previewSize, previewSize},
-                                potatoTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                            drewTexture = true;
-                        }
-                        break;
-                    default:
-                        break;
+                switch (towerMenu.selectedTower->type)
+                {
+                case TowerType::CARROT:
+                    if (carrotTowerTexture.id != 0)
+                    {
+                        renderer.renderRectangle(
+                            {previewX, previewY, previewSize, previewSize},
+                            carrotTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
+                        drewTexture = true;
+                    }
+                    break;
+                case TowerType::APPLE:
+                    if (appleTowerTexture.id != 0)
+                    {
+                        renderer.renderRectangle(
+                            {previewX, previewY, previewSize, previewSize},
+                            appleTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
+                        drewTexture = true;
+                    }
+                    break;
+                case TowerType::BANANA_PEEL:
+                    if (bananaPeelTexture.id != 0)
+                    {
+                        renderer.renderRectangle(
+                            {previewX, previewY, previewSize, previewSize},
+                            bananaPeelTexture, {1.0f, 1.0f, 1.0f, 1.0f});
+                        drewTexture = true;
+                    }
+                    break;
+                case TowerType::CACTUS:
+                    if (cactusTexture.id != 0)
+                    {
+                        renderer.renderRectangle(
+                            {previewX, previewY, previewSize, previewSize},
+                            cactusTexture, {1.0f, 1.0f, 1.0f, 1.0f});
+                        drewTexture = true;
+                    }
+                    break;
+                case TowerType::PINEAPPLE:
+                    if (pineappleTowerTexture.id != 0)
+                    {
+                        renderer.renderRectangle(
+                            {previewX, previewY, previewSize, previewSize},
+                            pineappleTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
+                        drewTexture = true;
+                    }
+                    break;
+                case TowerType::POTATO:
+                    if (potatoTowerTexture.id != 0)
+                    {
+                        renderer.renderRectangle(
+                            {previewX, previewY, previewSize, previewSize},
+                            potatoTowerTexture, {1.0f, 1.0f, 1.0f, 1.0f});
+                        drewTexture = true;
+                    }
+                    break;
+                default:
+                    break;
                 }
-                if (!drewTexture) {
+                if (!drewTexture)
+                {
                     renderer.renderRectangle(
                         {previewX, previewY, previewSize, previewSize},
                         {towerColor.r, towerColor.g, towerColor.b, 1.0f});
@@ -3326,12 +3666,12 @@ int main()
                 for (int i = 0; i < 3; i++)
                 {
                     Rectangle &upgradeButton = (i == 0) ? towerMenu.upgradeButton1 : (i == 1) ? towerMenu.upgradeButton2
-                                                                                          : towerMenu.upgradeButton3;
+                                                                                              : towerMenu.upgradeButton3;
 
                     Color upgradeColor(0.4f, 0.1f, 0.1f, 1.0f); // Default to dark red
                     int upgradeCost = towerMenu.selectedTower->getUpgradeCost(towerMenu.selectedTower->type, *upgrades[i].second);
                     bool canUpgrade = upgradeCost > 0 && beanCount >= upgradeCost;
-                    
+
                     if (*upgrades[i].second >= 3)
                     {
                         upgradeColor = Color(0.0f, 0.8f, 0.0f, 1.0f); // Green for max level
@@ -3339,27 +3679,28 @@ int main()
                     else if (canUpgrade)
                     {
                         upgradeColor = isPointInRect((float)mouseX, (float)mouseY, upgradeButton)
-                                               ? Color(0.0f, 0.8f, 0.0f, 1.0f)  // Bright green when hovered
-                                               : Color(0.0f, 0.6f, 0.0f, 1.0f); // Dark green normally
+                                           ? Color(0.0f, 0.8f, 0.0f, 1.0f)  // Bright green when hovered
+                                           : Color(0.0f, 0.6f, 0.0f, 1.0f); // Dark green normally
                     }
-                    
+
                     // Draw button background
                     renderer.renderRectangle(
                         {upgradeButton.x, upgradeButton.y, upgradeButton.w, upgradeButton.h},
                         {upgradeColor.r, upgradeColor.g, upgradeColor.b, upgradeColor.a});
-                    
+
                     // Draw button label background
                     renderer.renderRectangle(
                         {upgradeButton.x + 5, upgradeButton.y + 5, upgradeButton.w - 10, 20},
                         {0.0f, 0.0f, 0.0f, 0.5f});
-                    
+
                     // Draw upgrade type text label below the button, left-aligned and smaller
-                    const char* upgradeLabel = (i == 0) ? "DAMAGE" : (i == 1) ? "ATTACK SPEED" : "RANGE";
-                    float labelSize = 14.0f * scaleY; // Smaller text
-                    float labelX = upgradeButton.x + 10 * scaleX; // Left edge with margin
+                    const char *upgradeLabel = (i == 0) ? "DAMAGE" : (i == 1) ? "ATTACK SPEED"
+                                                                              : "RANGE";
+                    float labelSize = 14.0f * scaleY;                              // Smaller text
+                    float labelX = upgradeButton.x + 10 * scaleX;                  // Left edge with margin
                     float labelY = upgradeButton.y + upgradeButton.h + 6 * scaleY; // Slightly closer
                     drawText(renderer, upgradeLabel, labelX, labelY, labelSize, 2.0f, 1.0f);
-                    
+
                     // Instead of trying to render text, use color-coded symbols
                     if (i == 0)
                     { // DAMAGE - red symbol
@@ -3368,7 +3709,7 @@ int main()
                             {upgradeButton.x + 10, upgradeButton.y + 10, 30, 10},
                             {1.0f, 0.3f, 0.3f, 1.0f} // Red
                         );
-                        
+
                         // Draw cost text only if not maxed out
                         if (*upgrades[i].second < 3)
                         {
@@ -3386,7 +3727,7 @@ int main()
                             {upgradeButton.x + 30, upgradeButton.y + 10, 10, 20},
                             {0.3f, 0.3f, 1.0f, 1.0f} // Blue
                         );
-                        
+
                         // Draw cost text only if not maxed out
                         if (*upgrades[i].second < 3)
                         {
@@ -3400,20 +3741,20 @@ int main()
                             {upgradeButton.x + 20, upgradeButton.y + 10, 20, 20},
                             {0.3f, 0.8f, 0.3f, 1.0f} // Green
                         );
-                        
+
                         // Draw cost text only if not maxed out
                         if (*upgrades[i].second < 3)
                         {
                             drawNumber(renderer, upgradeCost, upgradeButton.x + upgradeButton.w - 80, upgradeButton.y + 10, 20.0f);
                         }
                     }
-                    
+
                     // Draw upgrade level indicator at the bottom of button
                     int level = *upgrades[i].second;
                     float indicatorWidth = upgradeButton.w / 3;
                     float indicatorHeight = 5.0f;
                     float indicatorY = upgradeButton.y + upgradeButton.h - 10.0f;
-                    
+
                     for (int j = 0; j < 3; j++)
                     {
                         Color levelColor = (j < level) ? Color(1.0f, 1.0f, 0.0f, 1.0f) : Color(0.5f, 0.5f, 0.5f, 0.5f);
@@ -3422,17 +3763,17 @@ int main()
                             {levelColor.r, levelColor.g, levelColor.b, levelColor.a});
                     }
                 }
-                
+
                 // Draw sell button
-                Color sellColor = isPointInRect((float)mouseX, (float)mouseY, towerMenu.sellButton) 
+                Color sellColor = isPointInRect((float)mouseX, (float)mouseY, towerMenu.sellButton)
                                       ? Color(0.8f, 0.2f, 0.2f, 1.0f)
                                       : Color(0.6f, 0.1f, 0.1f, 1.0f);
-                
+
                 renderer.renderRectangle(
-                    {towerMenu.sellButton.x, towerMenu.sellButton.y, 
+                    {towerMenu.sellButton.x, towerMenu.sellButton.y,
                      towerMenu.sellButton.w, towerMenu.sellButton.h},
                     {sellColor.r, sellColor.g, sellColor.b, sellColor.a});
-                
+
                 // Draw sell value (exactly 50% of current cost)
                 int currentCost = getTowerCost(towerMenu.selectedTower->type);
                 int sellValue = currentCost / 2;
@@ -3440,38 +3781,38 @@ int main()
                 float digitSize = 20.0f;
                 float textX = towerMenu.sellButton.x + 40;
                 float textY = towerMenu.sellButton.y + 10;
-                
+
                 // Draw bean icon
                 renderer.renderRectangle(
                     {textX - 25, textY + 5, 15, 15},
                     {0.6f, 0.4f, 0.2f, 1.0f});
-                
+
                 // Draw sell value
                 for (size_t i = 0; i < sellText.length(); i++)
                 {
                     drawDigit(renderer, sellText[i] - '0', textX + i * (digitSize * 1.2f), textY, digitSize);
                 }
-                
+
                 // Draw close button (X)
-                Color closeColor = isPointInRect((float)mouseX, (float)mouseY, towerMenu.closeButton) 
+                Color closeColor = isPointInRect((float)mouseX, (float)mouseY, towerMenu.closeButton)
                                        ? Color(1.0f, 0.2f, 0.2f, 1.0f)
                                        : Color(0.8f, 0.0f, 0.0f, 1.0f); // Brighter red on hover
-                
+
                 // Draw X shape with thicker lines and better positioning
                 float xSize = 16.0f;                                                // Reduced size from 24.0f to 16.0f
                 float xX = GAME_WIDTH * scaleX + PANEL_WIDTH * scaleX - xSize - 10; // Position in top right
                 float xY = 10;                                                      // Small margin from top
                 float thickness = 3.0f;                                             // Reduced thickness from 4.0f to 3.0f
-                
+
                 // Background circle for the X
                 renderer.renderRectangle(
                     {xX - 3, xY - 3, xSize + 6, xSize + 6}, // Adjusted padding for smaller size
                     {0.2f, 0.0f, 0.0f, 1.0f}                // Dark red background
                 );
-                
+
                 // Draw diagonal lines for X
                 float diagonal = sqrt(2.0f) * xSize; // Length of diagonal
-                
+
                 // First diagonal (top-left to bottom-right)
                 for (int i = 0; i < diagonal; i++)
                 {
@@ -3479,7 +3820,7 @@ int main()
                         {xX + i, xY + i, thickness, thickness},
                         {closeColor.r, closeColor.g, closeColor.b, closeColor.a});
                 }
-                
+
                 // Second diagonal (top-right to bottom-left)
                 for (int i = 0; i < diagonal; i++)
                 {
@@ -3487,7 +3828,7 @@ int main()
                         {xX + xSize - i, xY + i, thickness, thickness},
                         {closeColor.r, closeColor.g, closeColor.b, closeColor.a});
                 }
-                
+
                 // Update close button hitbox
                 towerMenu.closeButton = Rectangle(xX - 3, xY - 3, xSize + 6, xSize + 6);
             }
@@ -3496,7 +3837,7 @@ int main()
         // Draw towers
         for (const auto &tower : towers)
         {
-    Color towerColor = getTowerColor(tower.type);
+            Color towerColor = getTowerColor(tower.type);
             float uniformScale = std::min(scaleX, scaleY);
             float drawX = tower.pos.x * scaleX;
             float drawY = tower.pos.y * scaleY;
@@ -3566,13 +3907,13 @@ int main()
                 case TowerType::APPLE:
                     if (appleTexture.id != 0)
                     {
-            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - halfSize, drawY - halfSize, projSize, projSize},
                             appleTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 3.14159f, {0, 0, 1, 1});
                     }
                     else
                     {
-            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - halfSize, drawY - halfSize, projSize, projSize},
                             {1.0f, 0.2f, 0.2f, 1.0f});
                     }
@@ -3580,7 +3921,7 @@ int main()
                 case TowerType::CARROT:
                     if (carrotTexture.id != 0)
                     {
-        renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - halfSize, drawY - halfSize, projSize, projSize},
                             carrotTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1});
                     }
@@ -3625,9 +3966,9 @@ int main()
                         {0.0f, 0.0f, 0.0f, 1.0f});
                     break;
                 }
-    }
-}
-        
+            }
+        }
+
         // Draw placement tower (semi-transparent)
         if (placementTower.type != TowerType::NONE)
         {
@@ -3648,25 +3989,25 @@ int main()
             {
                 Color enemyColor = getEnemyColor(enemy.type);
                 float enemySize = 0.0f;
-                
+
                 switch (enemy.type)
                 {
-                    case EnemyType::BOSS:
-                        enemySize = BOSS_SIZE * ((scaleX + scaleY) / 2.0f);
-                        break;
-                    case EnemyType::TANK:
-                        enemySize = TANK_SIZE * ((scaleX + scaleY) / 2.0f);
-                        break;
-                    case EnemyType::GHOST:
-                        enemySize = GHOST_SIZE * ((scaleX + scaleY) / 2.0f);
-                        break;
-                    case EnemyType::SKELETON:
-                        enemySize = ENEMY_SIZE * ((scaleX + scaleY) / 2.0f);
-                        break;
-                    case EnemyType::ZOMBIE:
-                    default:
-                        enemySize = ENEMY_SIZE * ((scaleX + scaleY) / 2.0f);
-                        break;
+                case EnemyType::BOSS:
+                    enemySize = BOSS_SIZE * ((scaleX + scaleY) / 2.0f);
+                    break;
+                case EnemyType::TANK:
+                    enemySize = TANK_SIZE * ((scaleX + scaleY) / 2.0f);
+                    break;
+                case EnemyType::GHOST:
+                    enemySize = GHOST_SIZE * ((scaleX + scaleY) / 2.0f);
+                    break;
+                case EnemyType::SKELETON:
+                    enemySize = ENEMY_SIZE * ((scaleX + scaleY) / 2.0f);
+                    break;
+                case EnemyType::ZOMBIE:
+                default:
+                    enemySize = ENEMY_SIZE * ((scaleX + scaleY) / 2.0f);
+                    break;
                 }
 
                 // Get unscaled position and scale it for rendering
@@ -3676,77 +4017,77 @@ int main()
 
                 switch (enemy.type)
                 {
-                    case EnemyType::BOSS:
+                case EnemyType::BOSS:
                     if (bossTexture.id != 0)
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             bossTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1});
                     }
                     else
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a});
-                        }
-                        break;
-                    case EnemyType::TANK:
+                    }
+                    break;
+                case EnemyType::TANK:
                     if (tankTexture.id != 0)
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             tankTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1});
                     }
                     else
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a});
-                        }
-                        break;
-                    case EnemyType::GHOST:
+                    }
+                    break;
+                case EnemyType::GHOST:
                     if (ghostTexture.id != 0)
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             ghostTexture, {1.0f, 1.0f, 1.0f, enemyColor.a}, {0, 0}, 0, {0, 0, 1, 1});
                     }
                     else
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a});
-                        }
-                        break;
-                    case EnemyType::SKELETON:
+                    }
+                    break;
+                case EnemyType::SKELETON:
                     if (skeletonTexture.id != 0)
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             skeletonTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1});
                     }
                     else
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a});
-                        }
-                        break;
-                    case EnemyType::ZOMBIE:
-                    default:
+                    }
+                    break;
+                case EnemyType::ZOMBIE:
+                default:
                     if (zombieTexture.id != 0)
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             zombieTexture, {1.0f, 1.0f, 1.0f, 1.0f}, {0, 0}, 0, {0, 0, 1, 1});
                     }
                     else
                     {
-                            renderer.renderRectangle(
+                        renderer.renderRectangle(
                             {drawX - enemySize / 2, drawY - enemySize / 2, enemySize, enemySize},
                             {enemyColor.r, enemyColor.g, enemyColor.b, enemyColor.a});
-                        }
-                        break;
+                    }
+                    break;
                 }
 
                 // Draw health bar background
@@ -3808,8 +4149,7 @@ int main()
                     {mx - rectW / 2, my - rectH / 2, rectW, rectH},
                     {1.0f, 1.0f, 1.0f, 0.45f},
                     {0.5f, 0.5f}, // center
-                    rotation
-                );
+                    rotation);
             }
         }
 
@@ -3826,4 +4166,3 @@ int main()
     glfwTerminate();
     return 0;
 }
-
